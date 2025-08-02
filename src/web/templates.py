@@ -145,6 +145,22 @@ HTML_TEMPLATE = """
             font-size: 14px;
             color: #666;
         }
+        .add-qa-button {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            text-decoration: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .add-qa-button:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+        }
     </style>
 </head>
 <body>
@@ -152,6 +168,7 @@ HTML_TEMPLATE = """
         <h1>🏦 Banking RAG System</h1>
         <p>AI-Powered Banking & Financial Services Q&A</p>
         <p><em>Enhanced with comprehensive knowledge base and advanced retrieval</em></p>
+        <a href="/api/v1/add-qsa" class="add-qa-button">Add New Q&A</a>
     </div>
 
     <div class="stats">
