@@ -20,6 +20,7 @@ class BankingDocument:
         category: Category classification (e.g., 'loans', 'accounts', 'support')
         source: Source filename or identifier
         embedding: Vector embedding of the document (optional)
+        date_added: ISO format datetime when the document was added (optional)
     """
     id: str
     title: str
@@ -27,6 +28,7 @@ class BankingDocument:
     category: str
     source: str
     embedding: Optional[np.ndarray] = None
+    date_added: Optional[str] = None
     
     def __post_init__(self):
         """Validate document fields after initialization."""
