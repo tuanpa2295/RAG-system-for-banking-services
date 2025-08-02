@@ -14,6 +14,8 @@ import json
 import numpy as np
 import faiss
 import pickle
+import logging
+from datetime import datetime
 from typing import List, Dict, Optional
 from openai import AzureOpenAI
 from dotenv import load_dotenv
@@ -82,8 +84,48 @@ class BankingRAGService:
         self.index_file = "data/banking_faiss_index.idx"
         self.docs_file = "data/banking_documents.pkl"
         
+        # Setup logging
+        self._setup_logging()
+        
         # Initialize the service
         self.initialize()
+    
+    def _setup_logging(self):
+        """Setup logging for OpenAI responses."""
+        # Ensure logs directory exists
+        os.makedirs("logs", exist_ok=True)
+        
+        # Create logger for OpenAI responses
+        self.openai_logger = logging.getLogger('openai_responses')
+        self.openai_logger.setLevel(logging.INFO)
+        
+        # Remove existing handlers to avoid duplicates
+        self.openai_logger.handlers.clear()
+        
+        # Create file handler for OpenAI responses
+        log_filename = f"logs/openai_responses_{datetime.now().strftime('%Y%m%d')}.log"
+        file_handler = logging.FileHandler(log_filename)
+        file_handler.setLevel(logging.INFO)
+        
+        # Create formatter
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        file_handler.setFormatter(formatter)
+        
+        # Add handler to logger
+        self.openai_logger.addHandler(file_handler)
+        
+        # Also create a general logger for other operations
+        self.logger = logging.getLogger('banking_rag')
+        self.logger.setLevel(logging.INFO)
+        self.logger.handlers.clear()
+        
+        general_log_filename = f"logs/banking_rag_{datetime.now().strftime('%Y%m%d')}.log"
+        general_handler = logging.FileHandler(general_log_filename)
+        general_handler.setLevel(logging.INFO)
+        general_handler.setFormatter(formatter)
+        self.logger.addHandler(general_handler)
     
     def initialize(self):
         """Initialize the RAG service."""
@@ -122,24 +164,56 @@ class BankingRAGService:
             raise ValueError("Embedding client not initialized. Cannot generate embeddings.")
         
         try:
+            self.logger.info(f"Generating embeddings for {len(texts)} texts using {self.embedding_model}")
+            
             embeddings = []
             batch_size = 10
             
             for i in range(0, len(texts), batch_size):
                 batch = texts[i:i + batch_size]
                 
+                # Log request details
+                request_data = {
+                    "batch_size": len(batch),
+                    "model": self.embedding_model,
+                    "timestamp": datetime.now().isoformat(),
+                    "request_type": "embedding"
+                }
+                self.openai_logger.info(f"EMBEDDING_REQUEST: {json.dumps(request_data)}")
+                
                 response = self.embedding_client.embeddings.create(
                     model=self.embedding_model,
                     input=batch
                 )
                 
+                # Log response details
+                response_data = {
+                    "embeddings_generated": len(response.data),
+                    "model": response.model,
+                    "usage": {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    },
+                    "timestamp": datetime.now().isoformat(),
+                    "response_type": "embedding"
+                }
+                self.openai_logger.info(f"EMBEDDING_RESPONSE: {json.dumps(response_data)}")
+                
                 batch_embeddings = [np.array(embedding.embedding) for embedding in response.data]
                 embeddings.extend(batch_embeddings)
             
+            self.logger.info(f"Successfully generated {len(embeddings)} embeddings")
             return embeddings
             
         except Exception as e:
-            print(f"Error generating embeddings: {str(e)}")
+            error_data = {
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+                "operation": "embedding_generation",
+                "batch_count": len(texts)
+            }
+            self.openai_logger.error(f"EMBEDDING_ERROR: {json.dumps(error_data)}")
+            self.logger.error(f"Error generating embeddings: {str(e)}")
             raise Exception(f"Failed to generate embeddings: {str(e)}")
     
     def _create_vector_index(self):
@@ -227,6 +301,8 @@ class BankingRAGService:
             raise ValueError("Embedding client not initialized. Cannot perform document retrieval.")
         
         try:
+            self.logger.info(f"Retrieving documents for query: {query[:100]}... (top_k={top_k})")
+            
             # Generate query embedding
             query_embeddings = self._generate_embeddings([query])
             query_embedding = query_embeddings[0]
@@ -251,10 +327,34 @@ class BankingRAGService:
                     )
                     results.append(result)
             
+            # Log retrieval results
+            retrieval_data = {
+                "query": query,
+                "results_count": len(results),
+                "top_relevance_score": results[0].relevance_score if results else 0,
+                "retrieved_docs": [
+                    {
+                        "title": r.document.title,
+                        "category": r.document.category,
+                        "relevance_score": r.relevance_score,
+                        "rank": r.rank
+                    } for r in results
+                ],
+                "timestamp": datetime.now().isoformat(),
+                "operation": "document_retrieval"
+            }
+            self.logger.info(f"RETRIEVAL_RESULTS: {json.dumps(retrieval_data)}")
+            
             return results
             
         except Exception as e:
-            print(f"Error in document retrieval: {str(e)}")
+            error_data = {
+                "query": query,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+                "operation": "document_retrieval"
+            }
+            self.logger.error(f"RETRIEVAL_ERROR: {json.dumps(error_data)}")
             raise Exception(f"Failed to retrieve documents: {str(e)}")
 
     def generate_response(self, query: str, retrieved_docs: List[RetrievalResult]) -> str:
@@ -272,6 +372,8 @@ class BankingRAGService:
             raise ValueError("Chat client not initialized. Cannot generate response.")
         
         try:
+            self.logger.info(f"Generating response for query: {query[:100]}...")
+            
             # Prepare context from retrieved documents
             context_parts = []
             for result in retrieved_docs:
@@ -297,6 +399,20 @@ Instructions:
 
 Answer:"""
 
+            # Log request details
+            request_data = {
+                "query": query,
+                "model": self.chat_model,
+                "max_tokens": 500,
+                "temperature": 0.3,
+                "context_docs_count": len(retrieved_docs),
+                "context_length": len(context),
+                "prompt_length": len(prompt),
+                "timestamp": datetime.now().isoformat(),
+                "request_type": "chat_completion"
+            }
+            self.openai_logger.info(f"CHAT_REQUEST: {json.dumps(request_data)}")
+
             # Generate response using Azure OpenAI
             response = self.chat_client.chat.completions.create(
                 model=self.chat_model,
@@ -308,10 +424,39 @@ Answer:"""
                 temperature=0.3
             )
             
-            return response.choices[0].message.content.strip()
+            generated_answer = response.choices[0].message.content.strip()
+            
+            # Log response details
+            response_data = {
+                "query": query,
+                "answer": generated_answer,
+                "model": response.model,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                },
+                "finish_reason": response.choices[0].finish_reason,
+                "response_length": len(generated_answer),
+                "timestamp": datetime.now().isoformat(),
+                "response_type": "chat_completion",
+                "sources": [{"title": doc.document.title, "category": doc.document.category, "relevance": doc.relevance_score} for doc in retrieved_docs]
+            }
+            self.openai_logger.info(f"CHAT_RESPONSE: {json.dumps(response_data)}")
+            
+            self.logger.info(f"Successfully generated response of {len(generated_answer)} characters")
+            return generated_answer
             
         except Exception as e:
-            print(f"Error generating response: {str(e)}")
+            error_data = {
+                "query": query,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+                "operation": "chat_completion",
+                "context_docs_count": len(retrieved_docs) if retrieved_docs else 0
+            }
+            self.openai_logger.error(f"CHAT_ERROR: {json.dumps(error_data)}")
+            self.logger.error(f"Error generating response: {str(e)}")
             raise Exception(f"Failed to generate response: {str(e)}")
     
     def answer_question(self, query: str) -> Dict:
