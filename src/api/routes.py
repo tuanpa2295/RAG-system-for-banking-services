@@ -5,12 +5,68 @@ Flask Blueprint containing all API endpoints for the Banking RAG system.
 """
 
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+import time
+from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash
 from core.rag_service import BankingRAGService
 from models import BankingDocument
 
 # Create blueprint
 api_blueprint = Blueprint('api', __name__, url_prefix='/api/v1')
+
+@api_blueprint.route('/add-qsa', methods=['GET', 'POST'])
+def add_qsa():
+    """Handle adding new Q&A documents through web interface."""
+    if request.method == 'POST':
+        try:
+            # Get form data
+            question = request.form.get('question')
+            answer = request.form.get('answer')
+            category = request.form.get('category')
+            source = request.form.get('source', 'Web Interface')
+            
+            if not all([question, answer, category]):
+                flash('Please fill in all required fields', 'error')
+                return redirect(url_for('api.add_qsa'))
+
+            # Create new document
+            new_doc = BankingDocument(
+                id=f'doc_{int(time.time())}',
+                title=question[:50] + '...',
+                content=f'Q: {question}\nA: {answer}',
+                category=category,
+                source=source,
+                date_added=datetime.now().isoformat()
+            )
+
+            # Add to knowledge base
+            rag_service.add_document(new_doc)
+            
+            # Trigger reindex
+            rag_service.reindex()
+
+            flash('Document added successfully!', 'success')
+            return redirect(url_for('api.add_qsa'))
+
+        except Exception as e:
+            flash(f'Error adding document: {str(e)}', 'error')
+            return redirect(url_for('api.add_qsa'))
+
+    # GET request - show form
+    categories = [
+        'Personal Loans',
+        'Savings & Checking',
+        'Credit Cards',
+        'Investments',
+        'Mobile Banking',
+        'Mortgages',
+        'Business Banking',
+        'Regulations',
+        'Customer Support',
+        'Digital Assets',
+        'Wealth Management'
+    ]
+    
+    return render_template('add_qsa.html', categories=categories)
 
 # Global RAG service instance (will be set by the main app)
 rag_service: BankingRAGService = None
