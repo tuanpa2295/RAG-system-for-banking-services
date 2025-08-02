@@ -35,55 +35,70 @@ class BankingRAGService:
     """
     
     def __init__(self):
-        """Initialize the Banking RAG service."""
-        # Azure OpenAI configuration
-        self.client = None
-        self.embedding_model = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME", "text-embedding-3-small")
-        self.chat_model = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "GPT-4o")
+        """Initialize the Banking RAG Service with dual Azure OpenAI clients."""
+        # Load environment variables
+        load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', 'config', '.env'))
         
-        # Update embedding dimension for text-embedding-3-small
-        if "text-embedding-3-small" in self.embedding_model:
-            self.embedding_dimension = 1536  # text-embedding-3-small dimension
-        else:
-            self.embedding_dimension = 1536  # default dimension
+        # Azure OpenAI configuration for embeddings
+        self.embedding_api_key = os.getenv('AZURE_OPENAI_EMBEDDING_API_KEY')
+        self.embedding_endpoint = os.getenv('AZURE_OPENAI_EMBEDDING_ENDPOINT')
+        self.embedding_model = os.getenv('AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME', 'text-embedding-3-small')
         
-        # Storage
-        self.documents: List[BankingDocument] = []
-        self.index: Optional[faiss.IndexFlatIP] = None
+        # Azure OpenAI configuration for chat completions
+        self.chat_api_key = os.getenv('AZURE_OPENAI_CHAT_API_KEY')
+        self.chat_endpoint = os.getenv('AZURE_OPENAI_CHAT_ENDPOINT')
+        self.chat_model = os.getenv('AZURE_OPENAI_CHAT_DEPLOYMENT_NAME', 'GPT-4o-mini')
+        
+        self.api_version = os.getenv('AZURE_OPENAI_API_VERSION', '2024-02-01')
+        
+        # Initialize dual Azure OpenAI clients
+        self.embedding_client = None
+        self.chat_client = None
+        
+        if self.embedding_api_key and self.embedding_endpoint:
+            self.embedding_client = AzureOpenAI(
+                api_key=self.embedding_api_key,
+                api_version=self.api_version,
+                azure_endpoint=self.embedding_endpoint
+            )
+        
+        if self.chat_api_key and self.chat_endpoint:
+            self.chat_client = AzureOpenAI(
+                api_key=self.chat_api_key,
+                api_version=self.api_version,
+                azure_endpoint=self.chat_endpoint
+            )
+        
+        # Initialize knowledge base and vector store
+        self.knowledge_base = get_banking_knowledge_base()
+        self.vector_index = None
+        self.document_map = {}
+        self.documents = []
+        self.index = None
         self.is_initialized = False
         
-        # File paths - store in data directory
-        self.index_file = "data/banking_vector_index.faiss"
-        self.docs_file = "data/banking_vector_index_docs.pkl"
-    
-    def _setup_client(self):
-        """Set up Azure OpenAI client."""
-        try:
-            api_key = os.getenv("AZURE_OPENAI_API_KEY")
-            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-            
-            if not api_key or not endpoint:
-                print("⚠️  Azure OpenAI credentials not found in environment")
-                return False
-            
-            self.client = AzureOpenAI(
-                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
-                azure_endpoint=endpoint,
-                api_key=api_key,
-            )
-            
-            print("✅ Azure OpenAI client initialized successfully")
-            return True
-        except Exception as e:
-            print(f"❌ Could not initialize Azure OpenAI client: {str(e)}")
-            return False
+        # Initialize properties for file paths
+        self.embedding_dimension = 1536  # text-embedding-3-small dimension
+        self.index_file = "data/banking_faiss_index.idx"
+        self.docs_file = "data/banking_documents.pkl"
+        
+        # Initialize the service
+        self.initialize()
     
     def initialize(self):
         """Initialize the RAG service."""
         print("Initializing Banking RAG Service...")
         
-        # Set up client
-        self._setup_client()
+        # Validate clients
+        if not self.embedding_client:
+            print("⚠️  Embedding client not initialized - check AZURE_OPENAI_EMBEDDING_API_KEY")
+        else:
+            print("✅ Embedding client initialized successfully")
+            
+        if not self.chat_client:
+            print("⚠️  Chat client not initialized - check AZURE_OPENAI_CHAT_API_KEY")
+        else:
+            print("✅ Chat client initialized successfully")
         
         # Try to load existing index
         if self._load_index():
@@ -103,8 +118,8 @@ class BankingRAGService:
     
     def _generate_embeddings(self, texts: List[str]) -> List[np.ndarray]:
         """Generate embeddings for texts using Azure OpenAI."""
-        if not self.client:
-            return self._generate_mock_embeddings(len(texts))
+        if not self.embedding_client:
+            raise ValueError("Embedding client not initialized. Cannot generate embeddings.")
         
         try:
             embeddings = []
@@ -113,7 +128,7 @@ class BankingRAGService:
             for i in range(0, len(texts), batch_size):
                 batch = texts[i:i + batch_size]
                 
-                response = self.client.embeddings.create(
+                response = self.embedding_client.embeddings.create(
                     model=self.embedding_model,
                     input=batch
                 )
@@ -125,13 +140,7 @@ class BankingRAGService:
             
         except Exception as e:
             print(f"Error generating embeddings: {str(e)}")
-            print("Using mock embeddings for demonstration...")
-            return self._generate_mock_embeddings(len(texts))
-    
-    def _generate_mock_embeddings(self, count: int) -> List[np.ndarray]:
-        """Generate mock embeddings for demonstration purposes."""
-        np.random.seed(42)  # For reproducible results
-        return [np.random.rand(self.embedding_dimension).astype('float32') for _ in range(count)]
+            raise Exception(f"Failed to generate embeddings: {str(e)}")
     
     def _create_vector_index(self):
         """Create FAISS vector index from documents."""
@@ -214,8 +223,8 @@ class BankingRAGService:
         if not self.is_initialized or not self.index:
             raise ValueError("Service not initialized")
         
-        if not self.client:
-            return self._mock_retrieval(query, top_k)
+        if not self.embedding_client:
+            raise ValueError("Embedding client not initialized. Cannot perform document retrieval.")
         
         try:
             # Generate query embedding
@@ -246,86 +255,8 @@ class BankingRAGService:
             
         except Exception as e:
             print(f"Error in document retrieval: {str(e)}")
-            return self._mock_retrieval(query, top_k)
-    
-    def _mock_retrieval(self, query: str, top_k: int) -> List[RetrievalResult]:
-        """Enhanced document retrieval based on keyword matching and semantic similarity."""
-        query_lower = query.lower()
-        
-        # Enhanced keyword-based scoring
-        scored_docs = []
-        for doc in self.documents:
-            score = 0.0
-            doc_content_lower = doc.content.lower()
-            doc_title_lower = doc.title.lower()
-            
-            # Split query into meaningful terms
-            query_words = [word.strip('.,!?;:()[]{}') for word in query_lower.split() if len(word.strip('.,!?;:()[]{}')) > 2]
-            
-            # Enhanced keyword matching with weights
-            for word in query_words:
-                # Title matches are more important
-                if word in doc_title_lower:
-                    score += 2.0
-                    
-                # Content matches
-                content_matches = doc_content_lower.count(word)
-                score += content_matches * 0.5
-                
-                # Partial word matches (for variations)
-                if len(word) > 4:
-                    for content_word in doc_content_lower.split():
-                        if word in content_word or content_word in word:
-                            score += 0.2
-            
-            # Category matching with higher weight
-            for word in query_words:
-                if word in doc.category.lower():
-                    score += 3.0
-                    
-            # Special term matching for banking keywords
-            banking_terms = {
-                'loan': ['loan', 'lending', 'credit', 'financing', 'borrow'],
-                'auto': ['auto', 'car', 'vehicle', 'automotive'],
-                'home': ['home', 'house', 'property', 'real estate', 'mortgage'],
-                'heloc': ['heloc', 'equity', 'line of credit'],
-                'student': ['student', 'education', 'college', 'school'],
-                'youth': ['youth', 'young', 'teen', 'student'],
-                'business': ['business', 'commercial', 'corporate'],
-                'senior': ['senior', 'elderly', 'retirement'],
-                'investment': ['investment', 'portfolio', 'wealth'],
-                'digital': ['digital', 'online', 'mobile', 'app'],
-                'insurance': ['insurance', 'protection', 'coverage'],
-                'international': ['international', 'foreign', 'global']
-            }
-            
-            for query_word in query_words:
-                for category, terms in banking_terms.items():
-                    if query_word in terms:
-                        for term in terms:
-                            if term in doc_content_lower or term in doc_title_lower:
-                                score += 1.5
-                                
-            if score > 0:
-                # Normalize score
-                max_possible_score = len(query_words) * 3.0
-                normalized_score = min(score / max_possible_score, 1.0) if max_possible_score > 0 else 0.0
-                scored_docs.append((doc, normalized_score))
-        
-        # Sort by score and take top_k
-        scored_docs.sort(key=lambda x: x[1], reverse=True)
-        
-        results = []
-        for i, (doc, score) in enumerate(scored_docs[:top_k]):
-            result = RetrievalResult(
-                document=doc,
-                relevance_score=score,
-                rank=i + 1
-            )
-            results.append(result)
-        
-        return results
-    
+            raise Exception(f"Failed to retrieve documents: {str(e)}")
+
     def generate_response(self, query: str, retrieved_docs: List[RetrievalResult]) -> str:
         """
         Generate AI response based on query and retrieved documents.
@@ -337,8 +268,8 @@ class BankingRAGService:
         Returns:
             Generated response string
         """
-        if not self.client:
-            return self._generate_mock_response(query, retrieved_docs)
+        if not self.chat_client:
+            raise ValueError("Chat client not initialized. Cannot generate response.")
         
         try:
             # Prepare context from retrieved documents
@@ -367,7 +298,7 @@ Instructions:
 Answer:"""
 
             # Generate response using Azure OpenAI
-            response = self.client.chat.completions.create(
+            response = self.chat_client.chat.completions.create(
                 model=self.chat_model,
                 messages=[
                     {"role": "system", "content": "You are a helpful banking assistant providing accurate information about banking and financial services."},
@@ -381,22 +312,7 @@ Answer:"""
             
         except Exception as e:
             print(f"Error generating response: {str(e)}")
-            return self._generate_mock_response(query, retrieved_docs)
-    
-    def _generate_mock_response(self, query: str, retrieved_docs: List[RetrievalResult]) -> str:
-        """Generate a mock response for demonstration purposes."""
-        if not retrieved_docs:
-            return "I apologize, but I couldn't find relevant information to answer your question. Please contact our customer service team for assistance."
-        
-        # Simple template-based response
-        doc_titles = [result.document.title for result in retrieved_docs]
-        categories = list(set([result.document.category for result in retrieved_docs]))
-        
-        response = f"Based on our {', '.join(categories)} information, I can help you with your question about {query.lower()}. "
-        response += f"The most relevant documents I found are: {', '.join(doc_titles)}. "
-        response += "For detailed and current information, please contact our customer service team at 1-800-BANK or visit your local branch."
-        
-        return response
+            raise Exception(f"Failed to generate response: {str(e)}")
     
     def answer_question(self, query: str) -> Dict:
         """
