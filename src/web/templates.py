@@ -12,9 +12,10 @@ HTML_TEMPLATE = '''
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Banking RAG System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         body {
-            background-color: #f8f9fa;
+            background-color: #f0f2f5;
         }
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -24,39 +25,86 @@ HTML_TEMPLATE = '''
             margin-bottom: 2rem;
             text-align: center;
         }
-        .response-area {
-            min-height: 200px;
-            padding: 1.25rem;
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 1rem;
             background: #f8f9fa;
-            border-radius: 8px;
+            border-radius: 0.5rem;
+        }
+        .message {
+            max-width: 80%;
+            padding: 1rem;
+            border-radius: 1rem;
+            margin: 0.5rem 0;
+        }
+        .message.user {
+            align-self: flex-end;
+            background: #0d6efd;
+            color: white;
+            border-bottom-right-radius: 0.2rem;
+        }
+        .message.ai {
+            align-self: flex-start;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-bottom-left-radius: 0.2rem;
+        }
+        .message.system {
+            align-self: center;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            text-align: center;
+            max-width: 90%;
+        }
+        .message-content {
             white-space: pre-wrap;
-            font-family: 'Georgia', serif;
-            line-height: 1.6;
+            word-wrap: break-word;
+        }
+        .chat-input-container {
+            position: relative;
+            background: white;
+            border-top: 1px solid #dee2e6;
+            padding: 1rem;
         }
         .sources {
-            margin-top: 1.25rem;
+            margin-top: 1rem;
             padding: 1rem;
             background: #e8f4fd;
-            border-left: 4px solid #007bff;
-            border-radius: 0 8px 8px 0;
+            border-left: 4px solid #0d6efd;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
         }
-        .confidence {
-            float: right;
-            padding: 0.2rem 0.5rem;
+        .typing-indicator {
+            max-width: 320px !important;
+        }
+        .typing-dots {
+            display: inline-flex;
+            gap: 4px;
+            padding: 4px 8px;
+            background: #e9ecef;
             border-radius: 12px;
-            font-size: 12px;
         }
-        .confidence.high { background: #28a745; color: white; }
-        .confidence.medium { background: #ffc107; color: #212529; }
-        .confidence.low { background: #dc3545; color: white; }
-        .stat-number {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #667eea;
+        .typing-dots span {
+            width: 8px;
+            height: 8px;
+            background: #6c757d;
+            border-radius: 50%;
+            animation: typingAnimation 1.4s infinite;
+            display: inline-block;
         }
-        .stat-label {
-            font-size: 0.875rem;
-            color: #666;
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typingAnimation {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.4;
+            }
+            30% {
+                transform: translateY(-4px);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -84,25 +132,16 @@ HTML_TEMPLATE = '''
             </div>
         </div>
 
-        <div class="row g-4 mb-4">
-            <div class="col-md-6">
+        <div class="row">
+            <div class="col-lg-8">
+                <!-- Main Chat Area -->
                 <div class="card h-100">
-                    <div class="card-body">
-                        <h3 class="card-title">Ask a Banking Question</h3>
-                        <textarea id="queryInput" class="form-control mb-3" rows="5" 
-                                  placeholder="Type your banking question here, for example: 'What are the requirements for getting a personal loan?'"></textarea>
-                        <button id="submitBtn" class="btn btn-primary" onclick="submitQuery()">Submit Query</button>
-                    </div>
-                </div>
-            </div>
+                    <div class="card-body p-0">
+                        <div id="chatbox" class="chat-container" style="height: 500px; overflow-y: auto;">
+                            <div class="message system">
+                                <div class="message-content">
+                                    👋 Welcome to the Banking RAG System! Ask any banking or financial services question and get instant, accurate answers based on our comprehensive knowledge base.
 
-            <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h3 class="card-title">AI Response</h3>
-                        <div id="responseArea" class="response-area">
-                            Welcome to the Banking RAG System! Ask any banking or financial services question and get instant, accurate answers based on our comprehensive knowledge base.
-                            
 Our system covers:
 • Personal and business loans
 • Savings and investment accounts  
@@ -110,31 +149,72 @@ Our system covers:
 • Digital banking services
 • Regulatory compliance
 • Customer support information
+                                </div>
+                            </div>
                         </div>
-                        <div id="sourcesArea" class="sources" style="display: none;">
-                            <strong>Sources:</strong>
+                        
+                        <div id="sourcesArea" class="sources mx-3 mb-3" style="display: none;">
+                            <strong><i class="bi bi-info-circle"></i> Sources:</strong>
                             <div id="sourcesList"></div>
+                        </div>
+
+                        <div class="chat-input-container">
+                            <form onsubmit="event.preventDefault(); submitQuery();">
+                                <div class="input-group">
+                                    <textarea id="queryInput" class="form-control" 
+                                            placeholder="Type your banking question here..." 
+                                            rows="2"
+                                            style="resize: none;"></textarea>
+                                    <button id="submitBtn" type="submit" class="btn btn-primary px-4">
+                                        <i class="bi bi-send"></i>
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="card mb-4">
-            <div class="card-body">
-                <h3 class="card-title">Sample Questions</h3>
-                <p>Click any sample question to try it out:</p>
-                <div class="d-flex flex-wrap gap-2">
-                    <button class="btn btn-outline-primary" onclick="setQuery('What are the requirements for getting a personal loan?')">Personal Loan Requirements</button>
-                    <button class="btn btn-outline-primary" onclick="setQuery('How do I open a savings account and what are the benefits?')">Savings Account Information</button>
-                    <button class="btn btn-outline-primary" onclick="setQuery('What is the process for applying for a credit card?')">Credit Card Application</button>
-                    <button class="btn btn-outline-primary" onclick="setQuery('What investment options do you offer?')">Investment Options</button>
-                    <button class="btn btn-outline-primary" onclick="setQuery('How secure is mobile banking?')">Mobile Banking Security</button>
-                    <button class="btn btn-outline-primary" onclick="setQuery('What do I need to qualify for a mortgage?')">Mortgage Requirements</button>
-                    <button class="btn btn-outline-primary" onclick="setQuery('What business banking services are available?')">Business Banking</button>
-                    <button class="btn btn-outline-primary" onclick="setQuery('What are the current interest rates?')">Interest Rates</button>
-                    <button class="btn btn-outline-primary" onclick="setQuery('Do you offer cryptocurrency services?')">Crypto Services</button>
-                    <button class="btn btn-outline-primary" onclick="setQuery('What wealth management services are available?')">Wealth Management</button>
+            <div class="col-lg-4">
+                <!-- Sample Questions Sidebar -->
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">
+                            <i class="bi bi-lightbulb"></i> Sample Questions
+                        </h5>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('What are the requirements for getting a personal loan?')">
+                                <i class="bi bi-arrow-right-circle"></i> Personal Loan Requirements
+                            </button>
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('How do I open a savings account and what are the benefits?')">
+                                <i class="bi bi-arrow-right-circle"></i> Savings Account Information
+                            </button>
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('What is the process for applying for a credit card?')">
+                                <i class="bi bi-arrow-right-circle"></i> Credit Card Application
+                            </button>
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('What investment options do you offer?')">
+                                <i class="bi bi-arrow-right-circle"></i> Investment Options
+                            </button>
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('How secure is mobile banking?')">
+                                <i class="bi bi-arrow-right-circle"></i> Mobile Banking Security
+                            </button>
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('What do I need to qualify for a mortgage?')">
+                                <i class="bi bi-arrow-right-circle"></i> Mortgage Requirements
+                            </button>
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('What business banking services are available?')">
+                                <i class="bi bi-arrow-right-circle"></i> Business Banking
+                            </button>
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('What are the current interest rates?')">
+                                <i class="bi bi-arrow-right-circle"></i> Interest Rates
+                            </button>
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('Do you offer cryptocurrency services?')">
+                                <i class="bi bi-arrow-right-circle"></i> Crypto Services
+                            </button>
+                            <button class="btn btn-outline-primary text-start" onclick="setQuery('What wealth management services are available?')">
+                                <i class="bi bi-arrow-right-circle"></i> Wealth Management
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -149,7 +229,7 @@ Our system covers:
         async function submitQuery() {
             const query = document.getElementById('queryInput').value.trim();
             const submitBtn = document.getElementById('submitBtn');
-            const responseArea = document.getElementById('responseArea');
+            const chatbox = document.getElementById('chatbox');
             const sourcesArea = document.getElementById('sourcesArea');
             const sourcesList = document.getElementById('sourcesList');
 
@@ -175,10 +255,36 @@ Our system covers:
                 return;
             }
 
-            // Disable button and show loading
+            // Add user message to chat
+            const userMessage = document.createElement('div');
+            userMessage.className = 'message user';
+            userMessage.innerHTML = `<div class="message-content">${query}</div>`;
+            chatbox.appendChild(userMessage);
+
+            // Add AI typing indicator
+            const typingIndicator = document.createElement('div');
+            typingIndicator.className = 'message ai typing-indicator';
+            typingIndicator.innerHTML = `
+                <div class="message-content d-flex align-items-center gap-2">
+                    <div class="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <small class="text-muted">AI is typing...</small>
+                </div>
+            `;
+            chatbox.appendChild(typingIndicator);
+
+            // Scroll to bottom
+            chatbox.scrollTop = chatbox.scrollHeight;
+
+            // Clear input
+            document.getElementById('queryInput').value = '';
+
+            // Disable button
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-            responseArea.innerHTML = '<div class="text-muted fst-italic">Processing your question...<br><br>Searching through our knowledge base...</div>';
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
             sourcesArea.style.display = 'none';
 
             try {
@@ -193,7 +299,14 @@ Our system covers:
                 const data = await response.json();
 
                 if (data.status === 'success') {
-                    responseArea.innerHTML = data.answer;
+                    // Remove typing indicator
+                    chatbox.removeChild(typingIndicator);
+
+                    // Add AI response to chat
+                    const aiMessage = document.createElement('div');
+                    aiMessage.className = 'message ai';
+                    aiMessage.innerHTML = `<div class="message-content">${data.answer}</div>`;
+                    chatbox.appendChild(aiMessage);
 
                     // Show sources
                     if (data.sources && data.sources.length > 0) {
@@ -220,23 +333,36 @@ Our system covers:
                         sourcesArea.style.display = 'block';
                     }
                 } else {
-                    responseArea.innerHTML = `
-                        <div class="alert alert-danger">
-                            <strong>Error:</strong> ${data.message || 'Unknown error occurred'}
-                        </div>
-                    `;
+                    // Remove typing indicator
+                    chatbox.removeChild(typingIndicator);
+
+                    // Add error message to chat
+                    const errorMessage = document.createElement('div');
+                    errorMessage.className = 'message system';
+                    errorMessage.innerHTML = `<div class="message-content text-danger">
+                        <i class="bi bi-exclamation-triangle"></i> Error: ${data.message || 'Unknown error occurred'}
+                    </div>`;
+                    chatbox.appendChild(errorMessage);
                 }
             } catch (error) {
-                responseArea.innerHTML = `
-                    <div class="alert alert-danger">
-                        <strong>Error:</strong> Unable to process request. Please try again.
-                    </div>
-                `;
+                // Remove typing indicator
+                chatbox.removeChild(typingIndicator);
+
+                // Add error message to chat
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'message system';
+                errorMessage.innerHTML = `<div class="message-content text-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Error: Unable to process request. Please try again.
+                </div>`;
+                chatbox.appendChild(errorMessage);
                 console.error('Error:', error);
             } finally {
                 // Re-enable button
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Submit Query';
+                submitBtn.innerHTML = '<i class="bi bi-send"></i>';
+                
+                // Scroll to bottom
+                chatbox.scrollTop = chatbox.scrollHeight;
             }
         }
 
