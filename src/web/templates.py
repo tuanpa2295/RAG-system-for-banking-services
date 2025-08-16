@@ -124,26 +124,29 @@ HTML_TEMPLATE = '''
         }
         .ai-message-container {
             position: relative;
+            padding-bottom: 35px; /* Add space for the button */
         }
         .speaker-btn {
             position: absolute;
-            top: 5px;
-            right: 5px;
+            bottom: -30px;
+            left: 0px;
             border: none;
-            background: rgba(0, 0, 0, 0.1);
+            background: rgba(0, 0, 0, 0.8);
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
+            width: 32px;
+            height: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             opacity: 0.7;
-            transition: opacity 0.3s;
+            transition: opacity 0.3s, background 0.3s;
+            color: white;
+            z-index: 10;
         }
         .speaker-btn:hover {
             opacity: 1;
-            background: rgba(0, 0, 0, 0.2);
+            background: rgba(0, 0, 0, 0.9);
         }
         .speaker-btn.speaking {
             background: #198754;
@@ -154,6 +157,7 @@ HTML_TEMPLATE = '''
         .speaker-btn.paused {
             background: #ffc107;
             color: #000;
+            opacity: 1;
         }
     </style>
 </head>
