@@ -37,118 +37,12 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Banking RAG System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f8f9fa;
+            background-color: #f0f2f5;
         }
-        .header {
-            text-align: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-        }
-        .container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            margin-bottom: 30px;
-        }
-        .query-panel, .response-panel {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .query-input {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #e1e5e9;
-            border-radius: 8px;
-            font-size: 16px;
-            margin-bottom: 15px;
-            min-height: 100px;
-            resize: vertical;
-        }
-        .query-button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 8px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .query-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        }
-        .query-button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .response-area {
-            min-height: 200px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            white-space: pre-wrap;
-            font-family: 'Georgia', serif;
-            line-height: 1.6;
-        }
-        .sources {
-            margin-top: 20px;
-            padding: 15px;
-            background: #e8f4fd;
-            border-left: 4px solid #007bff;
-            border-radius: 0 8px 8px 0;
-        }
-        .source-item {
-            margin: 5px 0;
-            font-size: 14px;
-        }
-        .sample-queries {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .sample-button {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            padding: 10px 15px;
-            margin: 5px;
-            border-radius: 5px;
-            cursor: pointer;
-            display: inline-block;
-            font-size: 14px;
-            transition: all 0.2s;
-        }
-        .sample-button:hover {
-            background: #e9ecef;
-            border-color: #adb5bd;
-        }
-        .loading {
-            color: #666;
-            font-style: italic;
-        }
-        .confidence {
-            float: right;
-            background: #28a745;
-            color: white;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-        }
-        .confidence.medium { background: #ffc107; color: #212529; }
-        .confidence.low { background: #dc3545; }
     </style>
 </head>
 <body>
@@ -158,23 +52,84 @@ HTML_TEMPLATE = """
     </div>
 
     <div class="container">
-        <div class="query-panel">
-            <h3>Ask a Banking Question</h3>
-            <textarea id="queryInput" class="query-input" placeholder="Type your banking question here, for example: 'What are the requirements for getting a personal loan?'"></textarea>
-            <button id="submitBtn" class="query-button" onclick="submitQuery()">Submit Query</button>
-        </div>
+        <div class="card">
+            <div class="card-body">
+                <div id="chatbox" class="chat-container mb-3" style="height: 400px; overflow-y: auto;">
+                    <div class="message system">
+                        <div class="message-content">
+                            👋 Welcome to the Banking RAG System! Ask any banking or financial services question and get instant, accurate answers based on our comprehensive knowledge base.
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="sourcesArea" class="sources mb-3" style="display: none;">
+                    <strong>Sources:</strong>
+                    <div id="sourcesList"></div>
+                </div>
 
-        <div class="response-panel">
-            <h3>AI Response</h3>
-            <div id="responseArea" class="response-area">
-                Welcome to the Banking RAG System! Ask any banking or financial services question and get instant, accurate answers based on our comprehensive knowledge base.
-            </div>
-            <div id="sourcesArea" class="sources" style="display: none;">
-                <strong>Sources:</strong>
-                <div id="sourcesList"></div>
+                <div class="chat-input-container">
+                    <div class="input-group">
+                        <textarea id="queryInput" class="form-control" 
+                                placeholder="Type your banking question here..." 
+                                rows="2"
+                                style="resize: none;"></textarea>
+                        <button id="submitBtn" class="btn btn-primary" onclick="submitQuery()">
+                            <i class="bi bi-send"></i> Send
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+
+    <style>
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 0.5rem;
+        }
+        .message {
+            max-width: 80%;
+            padding: 1rem;
+            border-radius: 1rem;
+            margin: 0.5rem 0;
+        }
+        .message.user {
+            align-self: flex-end;
+            background: #0d6efd;
+            color: white;
+            border-bottom-right-radius: 0.2rem;
+        }
+        .message.ai {
+            align-self: flex-start;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-bottom-left-radius: 0.2rem;
+        }
+        .message.system {
+            align-self: center;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            text-align: center;
+            max-width: 90%;
+        }
+        .message-content {
+            white-space: pre-wrap;
+        }
+        .chat-input-container {
+            position: relative;
+        }
+        .sources {
+            background: #e8f4fd;
+            border-left: 4px solid #0d6efd;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+        }
+    </style>
 
     <div class="sample-queries">
         <h3>Sample Questions</h3>
@@ -197,20 +152,62 @@ HTML_TEMPLATE = """
         async function submitQuery() {
             const query = document.getElementById('queryInput').value.trim();
             const submitBtn = document.getElementById('submitBtn');
-            const responseArea = document.getElementById('responseArea');
+            const chatbox = document.getElementById('chatbox');
             const sourcesArea = document.getElementById('sourcesArea');
             const sourcesList = document.getElementById('sourcesList');
 
             if (!query) {
-                alert('Please enter a question');
+                const toast = new bootstrap.Toast(document.createElement('div'));
+                toast.innerHTML = `
+                    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+                        <div class="toast" role="alert">
+                            <div class="toast-header bg-warning text-dark">
+                                <strong class="me-auto">Warning</strong>
+                                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+                            </div>
+                            <div class="toast-body">
+                                Please enter a question
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(toast);
+                toast.show();
+                setTimeout(() => toast.remove(), 5000);
                 return;
             }
 
-            // Disable button and show loading
+            // Add user message to chat
+            const userMessage = document.createElement('div');
+            userMessage.className = 'message user';
+            userMessage.innerHTML = `<div class="message-content">${query}</div>`;
+            chatbox.appendChild(userMessage);
+
+            // Add AI typing indicator
+            const typingIndicator = document.createElement('div');
+            typingIndicator.className = 'message ai';
+            typingIndicator.innerHTML = `<div class="message-content">
+                <div class="spinner-grow spinner-grow-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <div class="spinner-grow spinner-grow-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <div class="spinner-grow spinner-grow-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>`;
+            chatbox.appendChild(typingIndicator);
+
+            // Scroll to bottom
+            chatbox.scrollTop = chatbox.scrollHeight;
+
+            // Clear input
+            document.getElementById('queryInput').value = '';
+
+            // Disable button
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Processing...';
-            responseArea.innerHTML = 'Processing your question...';
-            responseArea.className = 'response-area loading';
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
             sourcesArea.style.display = 'none';
 
             try {
@@ -224,37 +221,68 @@ HTML_TEMPLATE = """
 
                 const data = await response.json();
 
+                // Remove typing indicator
+                chatbox.removeChild(typingIndicator);
+
                 if (data.status === 'success') {
-                    responseArea.innerHTML = data.answer;
-                    responseArea.className = 'response-area';
+                    // Add AI response to chat
+                    const aiMessage = document.createElement('div');
+                    aiMessage.className = 'message ai';
+                    aiMessage.innerHTML = `<div class="message-content">${data.answer}</div>`;
+                    chatbox.appendChild(aiMessage);
 
                     // Show sources
                     if (data.sources && data.sources.length > 0) {
                         sourcesList.innerHTML = '';
                         data.sources.forEach(source => {
                             const sourceItem = document.createElement('div');
-                            sourceItem.className = 'source-item';
+                            sourceItem.className = 'source-item mb-2';
                             const confidenceClass = source.relevance_score > 0.8 ? 'high' : source.relevance_score > 0.6 ? 'medium' : 'low';
                             sourceItem.innerHTML = `
-                                <strong>${source.title}</strong> (${source.category})
-                                <span class="confidence ${confidenceClass}">${(source.relevance_score * 100).toFixed(0)}%</span>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>${source.title}</strong>
+                                        <span class="text-muted">(${source.category})</span>
+                                    </div>
+                                    <span class="badge ${
+                                        confidenceClass === 'high' ? 'bg-success' : 
+                                        confidenceClass === 'medium' ? 'bg-warning text-dark' : 
+                                        'bg-danger'
+                                    }">${(source.relevance_score * 100).toFixed(0)}%</span>
+                                </div>
                             `;
                             sourcesList.appendChild(sourceItem);
                         });
                         sourcesArea.style.display = 'block';
                     }
                 } else {
-                    responseArea.innerHTML = 'Error: ' + (data.message || 'Unknown error occurred');
-                    responseArea.className = 'response-area';
+                    // Add error message to chat
+                    const errorMessage = document.createElement('div');
+                    errorMessage.className = 'message system';
+                    errorMessage.innerHTML = `<div class="message-content text-danger">
+                        <i class="bi bi-exclamation-triangle"></i> Error: ${data.message || 'Unknown error occurred'}
+                    </div>`;
+                    chatbox.appendChild(errorMessage);
                 }
             } catch (error) {
-                responseArea.innerHTML = 'Error: Unable to process request. Please try again.';
-                responseArea.className = 'response-area';
+                // Remove typing indicator
+                chatbox.removeChild(typingIndicator);
+
+                // Add error message to chat
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'message system';
+                errorMessage.innerHTML = `<div class="message-content text-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Error: Unable to process request. Please try again.
+                </div>`;
+                chatbox.appendChild(errorMessage);
                 console.error('Error:', error);
             } finally {
                 // Re-enable button
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Submit Query';
+                submitBtn.innerHTML = '<i class="bi bi-send"></i> Send';
+                
+                // Scroll to bottom
+                chatbox.scrollTop = chatbox.scrollHeight;
             }
         }
 
