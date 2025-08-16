@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block title %}Financial Analysis - Banking RAG System{% endblock %}
+
+{% block additional_styles %}
+    .nav-pills .nav-link.active {
+        background-color: #0d6efd;
+        color: white;
+    }
+    .nav-pills .nav-link {
+        color: #0d6efd;
+    }
+    #loadingSpinner {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1000;
+    }
+    .typing-indicator {
+        display: none;
+        background-color: #e9ecef;
+        padding: 20px;
+        border-radius: 10px;
+        margin-top: 20px;
+    }
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">Financial Risk Analysis & IFRS Reports</h2>
+        
+        <!-- Navigation Pills -->
+        <ul class="nav nav-pills mb-4" id="analysisTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="risk-tab" data-bs-toggle="pill" data-bs-target="#risk" type="button" role="tab">Risk Analysis</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="ifrs-tab" data-bs-toggle="pill" data-bs-target="#ifrs" type="button" role="tab">IFRS Report</button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="analysisTabContent">
+            <!-- Risk Analysis Tab -->
+            <div class="tab-pane fade show active" id="risk" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Risk Metrics Analysis</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="riskAnalysisForm">
+                            <div class="mb-3">
+                                <label for="csvFile" class="form-label">Upload CSV File (Date, Close columns required)</label>
+                                <input type="file" class="form-control" id="csvFile" accept=".csv,.xlsx,.xls" required>
+                                <small class="text-muted">Supported formats: CSV, Excel (xlsx, xls)</small>
+                            </div>
+                            <div class="mb-3">
+                                <label for="assetName" class="form-label">Asset Name</label>
+                                <input type="text" class="form-control" id="assetName" required>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="riskFreeRate" class="form-label">Risk-Free Rate</label>
+                                        <input type="number" class="form-control" id="riskFreeRate" value="0.0" step="0.001">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="frequency" class="form-label">Frequency</label>
+                                        <select class="form-select" id="frequency">
+                                            <option value="D">Daily</option>
+                                            <option value="W">Weekly</option>
+                                            <option value="M">Monthly</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Analyze Risk</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Risk Analysis Results -->
+                <div id="riskResults" style="display: none;">
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Analysis Results</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="metricsResult"></div>
+                            <div id="mindmapResult"></div>
+                            <div class="mt-3">
+                                <button class="btn btn-success" id="downloadRiskReport">
+                                    <i class="bi bi-download"></i> Download Results
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- IFRS Report Tab -->
+            <div class="tab-pane fade" id="ifrs" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">IFRS Report Generator</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="ifrsForm">
+                            <div class="mb-3">
+                                <label for="jsonFile" class="form-label">Upload IFRS JSON File</label>
+                                <input type="file" class="form-control" id="jsonFile" accept=".json" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Generate Report</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- IFRS Report Results -->
+                <div id="ifrsResults" style="display: none;">
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">IFRS Report</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="ifrsReport"></div>
+                            <div class="mt-3">
+                                <button class="btn btn-success" id="downloadIfrsReport">
+                                    <i class="bi bi-download"></i> Download Report
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="bg-white p-3 rounded shadow">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <div class="mt-2">Processing...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+// Wait for DOM to be ready
+window.addEventListener('load', function() {
+    // Function to download data as JSON file
+    function downloadJson(data, filename) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // Function to download html content as PDF
+    async function downloadPdf(elementId, filename) {
+        const element = document.getElementById(elementId);
+        const opt = {
+            margin: 1,
+            filename: filename,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+        
+        try {
+            await html2pdf().set(opt).from(element).save();
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            alert('Error generating PDF. Please try again.');
+        }
+    }
+
+    // Risk Analysis Form Handler
+    document.getElementById('riskAnalysisForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Validate inputs
+        const file = document.getElementById('csvFile').files[0];
+        const assetName = document.getElementById('assetName').value.trim();
+        const rf = document.getElementById('riskFreeRate').value;
+        const freq = document.getElementById('frequency').value;
+
+        if (!file) {
+            alert('Please select a file to analyze');
+            return;
+        }
+
+        if (!assetName) {
+            alert('Please enter an asset name');
+            return;
+        }
+
+        // Check file type
+        const fileExt = file.name.split('.').pop().toLowerCase();
+        if (!['csv', 'xlsx', 'xls'].includes(fileExt)) {
+            alert('Please upload a CSV or Excel file');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('assetName', assetName);
+        formData.append('rf', rf);
+        formData.append('freq', freq);
+        
+        document.getElementById('loadingSpinner').style.display = 'block';
+        
+        try {
+            const response = await fetch('/api/v1/risk-analysis', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                console.error('Failed to parse response as JSON:', parseError);
+                const text = await response.text();
+                console.error('Raw response:', text);
+                throw new Error('Server returned invalid JSON format');
+            }
+
+            if (!response.ok) {
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+
+            if (data.status !== 'success' || !data.metrics || !data.mindmap) {
+                throw new Error('Invalid response structure from server');
+            }
+
+            displayRiskResults(data);
+        } catch (error) {
+            alert('Error processing request: ' + error);
+        } finally {
+            document.getElementById('loadingSpinner').style.display = 'none';
+        }
+    });
+
+    // IFRS Form Handler
+    document.getElementById('ifrsForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const jsonFile = document.getElementById('jsonFile').files[0];
+        if (!jsonFile) {
+            alert('Please select a JSON file');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', jsonFile);
+
+        document.getElementById('loadingSpinner').style.display = 'block';
+        
+        try {
+            const response = await fetch('/api/v1/ifrs-report', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            if (response.ok && data.status === 'success') {
+                document.getElementById('ifrsReport').innerHTML = data.html;
+                document.getElementById('ifrsResults').style.display = 'block';
+                document.getElementById('ifrsResults').scrollIntoView({ behavior: 'smooth' });
+
+                // Setup download button handler for IFRS report
+                document.getElementById('downloadIfrsReport').addEventListener('click', function() {
+                    const timestamp = new Date().toISOString().split('T')[0];
+                    const filename = `ifrs_report_${timestamp}.pdf`;
+                    downloadPdf('ifrsReport', filename);
+                });
+            } else {
+                alert('Error: ' + (data.message || 'Failed to generate report'));
+            }
+        } catch (error) {
+            alert('Error processing request: ' + error);
+        } finally {
+            document.getElementById('loadingSpinner').style.display = 'none';
+        }
+    });
+});
+
+function displayRiskResults(data) {
+    const metrics = data.metrics;
+    const mindmap = data.mindmap;
+    
+    if (!metrics || !mindmap) {
+        alert('Invalid response data');
+        return;
+    }
+
+    const metricsDiv = document.getElementById('metricsResult');
+    const mindmapDiv = document.getElementById('mindmapResult');
+    
+    // Display metrics
+    let metricsHtml = '<h4>Risk Metrics</h4>';
+    metricsHtml += `<p>Period: ${metrics.start} → ${metrics.end}</p>`;
+    metricsHtml += '<ul class="list-unstyled">';
+    metricsHtml += `<li><i class="bi bi-graph-up text-primary"></i> CAGR: ${(metrics.cagr * 100).toFixed(2)}%</li>`;
+    metricsHtml += `<li><i class="bi bi-thermometer-half text-info"></i> Volatility (Ann.): ${(metrics.vol_ann * 100).toFixed(2)}%</li>`;
+    metricsHtml += `<li><i class="bi bi-trophy text-success"></i> Sharpe Ratio: ${metrics.sharpe.toFixed(2)}</li>`;
+    metricsHtml += `<li><i class="bi bi-arrow-down text-danger"></i> Max Drawdown: ${(metrics.max_dd * 100).toFixed(2)}%</li>`;
+    metricsHtml += `<li><i class="bi bi-shield-exclamation"></i> VaR (95%/99%): ${(metrics.var95 * 100).toFixed(2)}% / ${(metrics.var99 * 100).toFixed(2)}%</li>`;
+    metricsHtml += `<li><i class="bi bi-shield-fill-exclamation"></i> CVaR (95%/99%): ${(metrics.cvar95 * 100).toFixed(2)}% / ${(metrics.cvar99 * 100).toFixed(2)}%</li>`;
+    metricsHtml += '</ul>';
+    
+    // Display mindmap
+    let mindmapHtml = '<h4 class="mt-4">Risk Profile & Allocation</h4>';
+    mindmapHtml += `<div class="border p-3 rounded bg-light">`;
+    mindmapHtml += renderMindmap(mindmap);
+    mindmapHtml += '</div>';
+    
+    metricsDiv.innerHTML = metricsHtml;
+    mindmapDiv.innerHTML = mindmapHtml;
+    document.getElementById('riskResults').style.display = 'block';
+    document.getElementById('riskResults').scrollIntoView({ behavior: 'smooth' });
+
+    // Setup download button handler
+    document.getElementById('downloadRiskReport').addEventListener('click', function() {
+        const timestamp = new Date().toISOString().split('T')[0];
+        const filename = `risk_analysis_${assetName}_${timestamp}.pdf`;
+        downloadPdf('riskResults', filename);
+    });
+}
+
+function renderMindmap(node) {
+    let html = `<div class="mb-2">`;
+    html += `<strong>${node.label}</strong>`;
+    if (node.children && node.children.length > 0) {
+        html += '<ul class="list-unstyled ms-4">';
+        for (const child of node.children) {
+            html += '<li>' + renderMindmap(child) + '</li>';
+        }
+        html += '</ul>';
+    }
+    html += '</div>';
+    return html;
+}
+</script>
+{% endblock %}
