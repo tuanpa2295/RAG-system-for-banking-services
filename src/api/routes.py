@@ -9,72 +9,30 @@ import time
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash
 from core.rag_service import BankingRAGService
 from models import BankingDocument
+from models.chat_service import ChatService
 
 # Create blueprint
 api_blueprint = Blueprint('api', __name__, url_prefix='/api/v1')
 
-@api_blueprint.route('/add-qsa', methods=['GET', 'POST'])
-def add_qsa():
-    """Handle adding new Q&A documents through web interface."""
-    if request.method == 'POST':
-        try:
-            # Get form data
-            question = request.form.get('question')
-            answer = request.form.get('answer')
-            category = request.form.get('category')
-            source = request.form.get('source', 'Web Interface')
-            
-            if not all([question, answer, category]):
-                flash('Please fill in all required fields', 'error')
-                return redirect(url_for('api.add_qsa'))
-
-            # Create new document
-            new_doc = BankingDocument(
-                id=f'doc_{int(time.time())}',
-                title=question[:50] + '...',
-                content=f'Q: {question}\nA: {answer}',
-                category=category,
-                source=source,
-                date_added=datetime.now().isoformat()
-            )
-
-            # Add to knowledge base
-            rag_service.add_document(new_doc)
-            
-            # Trigger reindex
-            rag_service.reindex()
-
-            flash('Document added successfully!', 'success')
-            return redirect(url_for('api.add_qsa'))
-
-        except Exception as e:
-            flash(f'Error adding document: {str(e)}', 'error')
-            return redirect(url_for('api.add_qsa'))
-
-    # GET request - show form
-    categories = [
-        'Personal Loans',
-        'Savings & Checking',
-        'Credit Cards',
-        'Investments',
-        'Mobile Banking',
-        'Mortgages',
-        'Business Banking',
-        'Regulations',
-        'Customer Support',
-        'Digital Assets',
-        'Wealth Management'
-    ]
-    
-    return render_template('add_qsa.html', categories=categories)
-
-# Global RAG service instance (will be set by the main app)
+# Global service instances (will be set by the main app)
 rag_service: BankingRAGService = None
+chat_service: ChatService = None
 
 def set_rag_service(service: BankingRAGService):
-    """Set the RAG service instance for the API routes."""
+    """Set the global RAG service instance."""
     global rag_service
     rag_service = service
+
+def set_chat_service(service: ChatService):
+    """Set the global chat service instance."""
+    global chat_service
+    chat_service = service
+
+def set_services(rag: BankingRAGService, chat: ChatService):
+    """Set the service instances for the API routes."""
+    global rag_service, chat_service
+    rag_service = rag
+    chat_service = chat
 
 @api_blueprint.route('/health', methods=['GET'])
 def health_check():
@@ -96,6 +54,8 @@ def health_check():
 @api_blueprint.route('/query', methods=['POST'])
 def process_query():
     """Process a banking question and return AI-generated response."""
+    start_time = time.time()
+    
     try:
         # Get request data
         data = request.get_json()
@@ -107,6 +67,7 @@ def process_query():
             }), 400
         
         query = data['query'].strip()
+        session_id = data.get('session_id')
         
         if not query:
             return jsonify({
@@ -114,10 +75,36 @@ def process_query():
                 "message": "Query cannot be empty"
             }), 400
         
+        # Create or get session if session_id provided
+        if chat_service and session_id:
+            session = chat_service.get_session(session_id)
+            if not session:
+                return jsonify({
+                    "status": "error",
+                    "message": "Session not found"
+                }), 404
+            
+            # Add user message to session
+            chat_service.add_message(session_id, 'user', query)
+        
         # Process the query
         result = rag_service.answer_question(query)
         
-        # Add timestamp
+        # Calculate response time
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Add assistant response to session if using chat history
+        if chat_service and session_id and result.get('status') == 'success':
+            chat_service.add_message(
+                session_id, 
+                'assistant', 
+                result['answer'],
+                sources=result.get('sources', []),
+                response_time_ms=response_time_ms
+            )
+        
+        # Add response time and timestamp
+        result['response_time_ms'] = response_time_ms
         result['timestamp'] = datetime.now().isoformat()
         
         return jsonify(result)
@@ -128,6 +115,264 @@ def process_query():
             "message": str(e),
             "timestamp": datetime.now().isoformat()
         }), 500
+
+# Chat Session Management Endpoints
+
+@api_blueprint.route('/chat/sessions', methods=['POST'])
+def create_chat_session():
+    """Create a new chat session."""
+    if not chat_service:
+        return jsonify({
+            "status": "error",
+            "message": "Chat service not available"
+        }), 503
+    
+    try:
+        data = request.get_json() or {}
+        
+        user_id = data.get('user_id')
+        session_name = data.get('session_name')
+        metadata = data.get('metadata', {})
+        
+        session = chat_service.create_session(
+            user_id=user_id,
+            session_name=session_name,
+            metadata=metadata
+        )
+        
+        return jsonify({
+            "status": "success",
+            "session": session.to_dict(),
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@api_blueprint.route('/chat/sessions/<session_id>', methods=['GET'])
+def get_chat_session(session_id):
+    """Get a specific chat session with its messages."""
+    if not chat_service:
+        return jsonify({
+            "status": "error",
+            "message": "Chat service not available"
+        }), 503
+    
+    try:
+        session = chat_service.get_session(session_id)
+        
+        if not session:
+            return jsonify({
+                "status": "error",
+                "message": "Session not found"
+            }), 404
+        
+        messages = chat_service.get_session_messages(session_id)
+        
+        return jsonify({
+            "status": "success",
+            "session": session.to_dict(),
+            "messages": [msg.to_dict() for msg in messages],
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@api_blueprint.route('/chat/sessions/<session_id>', methods=['PUT'])
+def update_chat_session(session_id):
+    """Update a chat session."""
+    if not chat_service:
+        return jsonify({
+            "status": "error",
+            "message": "Chat service not available"
+        }), 503
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "status": "error",
+                "message": "Request body required"
+            }), 400
+        
+        success = chat_service.update_session(
+            session_id=session_id,
+            session_name=data.get('session_name'),
+            is_active=data.get('is_active'),
+            metadata=data.get('metadata')
+        )
+        
+        if success:
+            session = chat_service.get_session(session_id)
+            return jsonify({
+                "status": "success",
+                "session": session.to_dict(),
+                "timestamp": datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Session not found"
+            }), 404
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@api_blueprint.route('/chat/sessions/<session_id>/messages', methods=['GET'])
+def get_session_messages(session_id):
+    """Get messages for a specific session."""
+    if not chat_service:
+        return jsonify({
+            "status": "error",
+            "message": "Chat service not available"
+        }), 503
+    
+    try:
+        limit = request.args.get('limit', 100, type=int)
+        messages = chat_service.get_session_messages(session_id, limit=limit)
+        
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "messages": [msg.to_dict() for msg in messages],
+            "message_count": len(messages),
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@api_blueprint.route('/chat/messages/<message_id>/feedback', methods=['POST'])
+def add_message_feedback(message_id):
+    """Add feedback rating to a message."""
+    if not chat_service:
+        return jsonify({
+            "status": "error",
+            "message": "Chat service not available"
+        }), 503
+    
+    try:
+        data = request.get_json()
+        
+        if not data or 'rating' not in data:
+            return jsonify({
+                "status": "error",
+                "message": "Missing 'rating' field in request body"
+            }), 400
+        
+        rating = data['rating']
+        
+        if not isinstance(rating, int) or not 1 <= rating <= 5:
+            return jsonify({
+                "status": "error",
+                "message": "Rating must be an integer between 1 and 5"
+            }), 400
+        
+        success = chat_service.add_message_feedback(message_id, rating)
+        
+        if success:
+            return jsonify({
+                "status": "success",
+                "message": "Feedback added successfully",
+                "timestamp": datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Message not found"
+            }), 404
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@api_blueprint.route('/chat/sessions/<session_id>/statistics', methods=['GET'])
+def get_session_statistics(session_id):
+    """Get statistics for a chat session."""
+    if not chat_service:
+        return jsonify({
+            "status": "error",
+            "message": "Chat service not available"
+        }), 503
+    
+    try:
+        stats = chat_service.get_session_statistics(session_id)
+        
+        if not stats:
+            return jsonify({
+                "status": "error",
+                "message": "Session not found"
+            }), 404
+        
+        return jsonify({
+            "status": "success",
+            "statistics": stats,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@api_blueprint.route('/chat/users/<user_id>/sessions', methods=['GET'])
+def get_user_sessions(user_id):
+    """Get chat sessions for a specific user."""
+    if not chat_service:
+        return jsonify({
+            "status": "error",
+            "message": "Chat service not available"
+        }), 503
+    
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        active_only = request.args.get('active_only', 'true').lower() == 'true'
+        
+        sessions = chat_service.get_user_sessions(
+            user_id=user_id,
+            limit=limit,
+            active_only=active_only
+        )
+        
+        return jsonify({
+            "status": "success",
+            "user_id": user_id,
+            "sessions": [session.to_dict() for session in sessions],
+            "session_count": len(sessions),
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+# Existing endpoints remain the same...
 
 @api_blueprint.route('/categories', methods=['GET'])
 def get_categories():
