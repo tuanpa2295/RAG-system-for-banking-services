@@ -357,7 +357,7 @@ class BankingRAGService:
             self.logger.error(f"RETRIEVAL_ERROR: {json.dumps(error_data)}")
             raise Exception(f"Failed to retrieve documents: {str(e)}")
 
-    def generate_response(self, query: str, retrieved_docs: List[RetrievalResult], chat_context: Optional[list] = None) -> str:
+    def generate_response(self, query: str, retrieved_docs: List[RetrievalResult]) -> str:
         """
         Generate AI response based on query and retrieved documents.
         
@@ -379,35 +379,23 @@ class BankingRAGService:
             for result in retrieved_docs:
                 doc = result.document
                 context_parts.append(f"Document: {doc.title} ({doc.category})\nContent: {doc.content}\n")
+            
             context = "\n".join(context_parts)
+            
+            # Create prompt
+            prompt = f"""You are a helpful banking assistant with access to comprehensive banking and financial services information. Use the provided context to answer the user's question accurately and helpfully.
 
-            # Prepare chat history context (short-term memory)
-            chat_context_text = ""
-            if chat_context and isinstance(chat_context, list) and len(chat_context) > 0:
-                chat_context_text = "\n".join([
-                    f"{msg['role']}: {msg['content']}" for msg in chat_context if 'role' in msg and 'content' in msg
-                ])
-
-            # Create prompt with both document context and chat history
-            prompt = f"""
-You are a helpful banking assistant with access to comprehensive banking and financial services information. Use the provided document context and recent chat history to answer the user's question accurately and helpfully.
-
-Document Context:
+Context:
 {context}
-
-Recent Chat History (most recent last):
-{chat_context_text}
 
 User Question: {query}
 
 Instructions:
-- If the user asks about previous questions, previous answers, or anything about the chat history, use the chat history above to answer.
-- Provide a clear, accurate answer based on the context provided.
-- If the user asks about banking or financial services, use both the document context and chat history to answer.
-- If neither contains enough information, say so honestly.
-- Include specific details like rates, requirements, or processes when available.
-- Use a professional but friendly tone.
-- Keep the response concise but comprehensive.
+- Provide a clear, accurate answer based on the context provided
+- If the context doesn't contain enough information, say so honestly
+- Include specific details like rates, requirements, or processes when available
+- Use a professional but friendly tone
+- Keep the response concise but comprehensive
 
 Answer:"""
 
@@ -471,7 +459,7 @@ Answer:"""
             self.logger.error(f"Error generating response: {str(e)}")
             raise Exception(f"Failed to generate response: {str(e)}")
     
-    def answer_question(self, query: str, context: Optional[list] = None) -> Dict:
+    def answer_question(self, query: str) -> Dict:
         """
         Main method to answer a banking question.
         
@@ -484,19 +472,19 @@ Answer:"""
         try:
             if not self.is_initialized:
                 self.initialize()
-
-            # Use only the query for retrieval, but pass context to response generation
+            
+            # Retrieve relevant documents
             retrieved_docs = self.retrieve_documents(query, top_k=3)
-
-            # Generate response with chat context
-            answer = self.generate_response(query, retrieved_docs, chat_context=context)
-
+            
+            # Generate response
+            answer = self.generate_response(query, retrieved_docs)
+            
             # Calculate average confidence
             if retrieved_docs:
                 avg_confidence = sum(r.relevance_score for r in retrieved_docs) / len(retrieved_docs)
             else:
                 avg_confidence = 0.0
-
+            
             # Prepare sources
             sources = [
                 {
@@ -507,18 +495,15 @@ Answer:"""
                 }
                 for result in retrieved_docs
             ]
-
+            
             return {
                 "status": "success",
                 "answer": answer,
                 "confidence": avg_confidence,
                 "sources": sources,
-                "query": query,
-                "context_used": "\n".join([
-                    f"{msg['role']}: {msg['content']}" for msg in context if 'role' in msg and 'content' in msg
-                ]) if context and len(context) > 0 else None
+                "query": query
             }
-
+            
         except Exception as e:
             return {
                 "status": "error",

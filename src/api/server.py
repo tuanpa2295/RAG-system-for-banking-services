@@ -9,11 +9,9 @@ import os
 from flask import Flask, render_template, render_template_string
 from flask_cors import CORS
 
-from .routes import api_blueprint, set_rag_service, set_chat_service
+from .routes import api_blueprint, set_rag_service
 from web.templates import HTML_TEMPLATE
 from core.rag_service import BankingRAGService
-from models.database import init_db
-from models.chat_service import ChatService
 
 def create_app(rag_service: BankingRAGService) -> Flask:
     """
@@ -33,20 +31,6 @@ def create_app(rag_service: BankingRAGService) -> Flask:
     app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-123')  # In production, use proper secret key
     
     CORS(app)  # Enable CORS for frontend integration
-    
-    # Initialize database
-    try:
-        init_db(app)
-        print("✅ Database initialized successfully")
-        
-        # Initialize chat service
-        chat_service = ChatService()
-        set_chat_service(chat_service)
-        print("✅ Chat service initialized successfully")
-        
-    except Exception as e:
-        print(f"⚠️  Warning: Chat service not available - {str(e)}")
-        set_chat_service(None)
     
     # Set RAG service for API routes
     set_rag_service(rag_service)
