@@ -6,7 +6,7 @@ Main Flask application factory and server configuration.
 
 from datetime import datetime
 import os
-from flask import Flask, render_template, render_template_string
+from flask import Flask, render_template, render_template_string, redirect, url_for
 from flask_cors import CORS
 
 from .routes import api_blueprint, set_rag_service
@@ -41,8 +41,9 @@ def create_app(rag_service: BankingRAGService) -> Flask:
     # Main web interface route
     @app.route('/')
     def index():
-        """Serve the web interface."""
-        return render_template_string(HTML_TEMPLATE)
+        """Redirect to home page."""
+        from flask import redirect, url_for
+        return redirect(url_for('api.home'))
     
     # Error handlers
     @app.errorhandler(404)

@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Banking RAG System{% endblock %}
+
+{% block additional_styles %}
+    .chat-container {
+        display: none;
+        margin-top: 2rem;
+    }
+    .message {
+        max-width: 80%;
+        padding: 1rem;
+        border-radius: 1rem;
+        margin: 0.5rem 0;
+    }
+    .message.user {
+        align-self: flex-end;
+        background: #0d6efd;
+        color: white;
+        border-bottom-right-radius: 0.2rem;
+    }
+    .message.ai {
+        align-self: flex-start;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-bottom-left-radius: 0.2rem;
+    }
+    .message.system {
+        align-self: center;
+        background: #e9ecef;
+        border: 1px solid #dee2e6;
+        text-align: center;
+        max-width: 90%;
+    }
+    .chat-box-container {
+        height: 500px;
+        display: flex;
+        flex-direction: column;
+    }
+    #chatbox {
+        flex-grow: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        padding: 1rem;
+    }
+    .typing-indicator {
+        max-width: 320px !important;
+    }
+    .typing-dots {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px 8px;
+        background: #e9ecef;
+        border-radius: 12px;
+    }
+    .typing-dots span {
+        width: 8px;
+        height: 8px;
+        background: #6c757d;
+        border-radius: 50%;
+        animation: typingAnimation 1.4s infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingAnimation {
+        0%, 60%, 100% {
+            transform: translateY(0);
+            opacity: 0.4;
+        }
+        30% {
+            transform: translateY(-4px);
+            opacity: 1;
+        }
+    }
+{% endblock %}
+
+{% block content %}
+<div class="text-center mb-5">
+    <h1 class="display-4 mb-3">Banking RAG System</h1>
+    <p class="lead text-muted">Your intelligent banking assistant powered by AI</p>
+</div>
+
+<div id="featuresSection">
+<div class="row g-4 py-3">
+    <!-- Chat Feature -->
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm feature-card">
+            <div class="card-body text-center p-4">
+                <div class="mb-3">
+                    <i class="bi bi-chat-dots text-primary" style="font-size: 2.5rem;"></i>
+                </div>
+                <h5 class="card-title">Banking Assistant</h5>
+                <p class="card-text text-muted">Get instant answers to your banking queries using our AI-powered chat system.</p>
+                <button onclick="showChat()" class="btn btn-primary">Start Chat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Q&A Management -->
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm feature-card">
+            <div class="card-body text-center p-4">
+                <div class="mb-3">
+                    <i class="bi bi-journal-plus text-success" style="font-size: 2.5rem;"></i>
+                </div>
+                <h5 class="card-title">Q&A Management</h5>
+                <p class="card-text text-muted">Add and manage Q&A documents to enhance the knowledge base.</p>
+                <a href="/api/v1/add-qsa" class="btn btn-success">Add Q&A</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Financial Analysis -->
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm feature-card">
+            <div class="card-body text-center p-4">
+                <div class="mb-3">
+                    <i class="bi bi-graph-up text-info" style="font-size: 2.5rem;"></i>
+                </div>
+                <h5 class="card-title">Financial Analysis</h5>
+                <p class="card-text text-muted">Analyze risk metrics and generate IFRS reports from your financial data.</p>
+                <a href="/api/v1/financial-analysis" class="btn btn-info text-white">Analyze</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<div class="row mt-5">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title mb-4">System Statistics</h5>
+                <div class="row text-center">
+                    <div class="col-sm-4">
+                        <h3 class="text-primary mb-2">{{ stats.total_documents }}</h3>
+                        <p class="text-muted mb-0">Knowledge Base Documents</p>
+                    </div>
+                    <div class="col-sm-4">
+                        <h3 class="text-success mb-2">{{ stats.categories|length }}</h3>
+                        <p class="text-muted mb-0">Categories</p>
+                    </div>
+                    <div class="col-sm-4">
+                        <h3 class="text-info mb-2">{{ stats.response_time }}ms</h3>
+                        <p class="text-muted mb-0">Average Response Time</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Chat Interface -->
+<div id="chatSection" class="chat-container">
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Main Chat Area -->
+            <div class="card h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Banking Assistant</h5>
+                    <button onclick="hideChat()" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-x-lg"></i> Close Chat
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="chat-box-container">
+                        <div id="chatbox" class="chat-container">
+                            <div class="message system">
+                                <div class="message-content">
+                                    👋 Welcome to the Banking RAG System! Ask any banking or financial services question and get instant, accurate answers based on our comprehensive knowledge base.
+
+Our system covers:
+• Personal and business loans
+• Savings and investment accounts  
+• Credit cards and mortgages
+• Digital banking services
+• Regulatory compliance
+• Customer support information
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="sourcesArea" class="sources mx-3 mb-3" style="display: none;">
+                            <strong><i class="bi bi-info-circle"></i> Sources:</strong>
+                            <div id="sourcesList"></div>
+                        </div>
+
+                        <div class="chat-input-container">
+                            <form onsubmit="event.preventDefault(); submitQuery();">
+                                <div class="input-group">
+                                    <textarea id="queryInput" class="form-control" 
+                                            placeholder="Type your banking question here..." 
+                                            rows="2"
+                                            style="resize: none;"></textarea>
+                                    <button id="submitBtn" type="submit" class="btn btn-primary px-4">
+                                        <i class="bi bi-send"></i>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Sample Questions Sidebar -->
+            <div class="card h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">Sample Questions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary text-start" onclick="setQuery('What are the requirements for getting a personal loan?')">
+                            <i class="bi bi-arrow-right-circle"></i> Personal Loan Requirements
+                        </button>
+                        <button class="btn btn-outline-primary text-start" onclick="setQuery('How do I open a savings account and what are the benefits?')">
+                            <i class="bi bi-arrow-right-circle"></i> Savings Account Information
+                        </button>
+                        <button class="btn btn-outline-primary text-start" onclick="setQuery('What is the process for applying for a credit card?')">
+                            <i class="bi bi-arrow-right-circle"></i> Credit Card Application
+                        </button>
+                        <button class="btn btn-outline-primary text-start" onclick="setQuery('What investment options do you offer?')">
+                            <i class="bi bi-arrow-right-circle"></i> Investment Options
+                        </button>
+                        <button class="btn btn-outline-primary text-start" onclick="setQuery('How secure is mobile banking?')">
+                            <i class="bi bi-arrow-right-circle"></i> Mobile Banking Security
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showChat() {
+    document.getElementById('featuresSection').style.display = 'none';
+    document.getElementById('chatSection').style.display = 'block';
+    document.getElementById('queryInput').focus();
+}
+
+function hideChat() {
+    document.getElementById('featuresSection').style.display = 'block';
+    document.getElementById('chatSection').style.display = 'none';
+}
+
+function setQuery(query) {
+    document.getElementById('queryInput').value = query;
+}
+
+async function submitQuery() {
+    const query = document.getElementById('queryInput').value.trim();
+    const submitBtn = document.getElementById('submitBtn');
+    const chatbox = document.getElementById('chatbox');
+    const sourcesArea = document.getElementById('sourcesArea');
+    const sourcesList = document.getElementById('sourcesList');
+
+    if (!query) return;
+
+    // Add user message
+    const userMessage = document.createElement('div');
+    userMessage.className = 'message user';
+    userMessage.innerHTML = `<div class="message-content">${query}</div>`;
+    chatbox.appendChild(userMessage);
+
+    // Add typing indicator
+    const typingIndicator = document.createElement('div');
+    typingIndicator.className = 'message ai typing-indicator';
+    typingIndicator.innerHTML = `
+        <div class="message-content d-flex align-items-center gap-2">
+            <div class="typing-dots">
+                <span></span><span></span><span></span>
+            </div>
+            <small class="text-muted">AI is typing...</small>
+        </div>`;
+    chatbox.appendChild(typingIndicator);
+
+    // Scroll to bottom
+    chatbox.scrollTop = chatbox.scrollHeight;
+
+    // Clear input
+    document.getElementById('queryInput').value = '';
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    sourcesArea.style.display = 'none';
+
+    try {
+        const response = await fetch('/api/v1/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query })
+        });
+
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            chatbox.removeChild(typingIndicator);
+            
+            const aiMessage = document.createElement('div');
+            aiMessage.className = 'message ai';
+            aiMessage.innerHTML = `<div class="message-content">${data.answer}</div>`;
+            chatbox.appendChild(aiMessage);
+
+            if (data.sources?.length > 0) {
+                sourcesList.innerHTML = data.sources.map(source => `
+                    <div class="source-item mb-2">
+                        <strong>${source.title}</strong>
+                        <span class="text-muted">(${source.category})</span>
+                        <span class="badge bg-${
+                            source.relevance_score > 0.8 ? 'success' : 
+                            source.relevance_score > 0.6 ? 'warning text-dark' : 
+                            'danger'
+                        }">${(source.relevance_score * 100).toFixed(0)}%</span>
+                    </div>
+                `).join('');
+                sourcesArea.style.display = 'block';
+            }
+        } else {
+            chatbox.removeChild(typingIndicator);
+            const errorMessage = document.createElement('div');
+            errorMessage.className = 'message system';
+            errorMessage.innerHTML = `<div class="message-content text-danger">
+                <i class="bi bi-exclamation-triangle"></i> Error: ${data.message || 'Unknown error occurred'}
+            </div>`;
+            chatbox.appendChild(errorMessage);
+        }
+    } catch (error) {
+        chatbox.removeChild(typingIndicator);
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'message system';
+        errorMessage.innerHTML = `<div class="message-content text-danger">
+            <i class="bi bi-exclamation-triangle"></i> Error: Unable to process request. Please try again.
+        </div>`;
+        chatbox.appendChild(errorMessage);
+        console.error('Error:', error);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-send"></i>';
+        chatbox.scrollTop = chatbox.scrollHeight;
+    }
+}
+
+// Allow Enter key to submit
+document.getElementById('queryInput').addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        submitQuery();
+    }
+});
+</script>
+{% endblock %}
