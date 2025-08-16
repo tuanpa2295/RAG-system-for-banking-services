@@ -4,7 +4,7 @@ HTML Templates for Banking RAG System
 Web interface templates for the Banking RAG system.
 """
 
-HTML_TEMPLATE = '''
+HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -138,9 +138,7 @@ Our system covers:
                 </div>
             </div>
         </div>
-    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function setQuery(query) {
             document.getElementById('queryInput').value = query;
@@ -154,31 +152,15 @@ Our system covers:
             const sourcesList = document.getElementById('sourcesList');
 
             if (!query) {
-                const toastEl = document.createElement('div');
-                toastEl.innerHTML = `
-                    <div class="toast-container position-fixed bottom-0 end-0 p-3">
-                        <div class="toast" role="alert">
-                            <div class="toast-header bg-warning text-dark">
-                                <strong class="me-auto">Warning</strong>
-                                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-                            </div>
-                            <div class="toast-body">
-                                Please enter a question
-                            </div>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(toastEl);
-                const toast = new bootstrap.Toast(toastEl.querySelector('.toast'));
-                toast.show();
-                setTimeout(() => toastEl.remove(), 5000);
+                alert('Please enter a question');
                 return;
             }
 
             // Disable button and show loading
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-            responseArea.innerHTML = '<div class="text-muted fst-italic">Processing your question...<br><br>Searching through our knowledge base...</div>';
+            submitBtn.textContent = 'Processing...';
+            responseArea.innerHTML = 'Processing your question...\\n\\nSearching through our knowledge base...';
+            responseArea.className = 'response-area loading';
             sourcesArea.style.display = 'none';
 
             try {
@@ -194,49 +176,35 @@ Our system covers:
 
                 if (data.status === 'success') {
                     responseArea.innerHTML = data.answer;
+                    responseArea.className = 'response-area';
 
                     // Show sources
                     if (data.sources && data.sources.length > 0) {
                         sourcesList.innerHTML = '';
                         data.sources.forEach(source => {
                             const sourceItem = document.createElement('div');
-                            sourceItem.className = 'source-item mb-2';
+                            sourceItem.className = 'source-item';
                             const confidenceClass = source.relevance_score > 0.8 ? 'high' : source.relevance_score > 0.6 ? 'medium' : 'low';
                             sourceItem.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <strong>${source.title}</strong>
-                                        <span class="text-muted">(${source.category})</span>
-                                    </div>
-                                    <span class="badge ${
-                                        confidenceClass === 'high' ? 'bg-success' : 
-                                        confidenceClass === 'medium' ? 'bg-warning text-dark' : 
-                                        'bg-danger'
-                                    }">${(source.relevance_score * 100).toFixed(0)}%</span>
-                                </div>
+                                <strong>${source.title}</strong> (${source.category})
+                                <span class="confidence ${confidenceClass}">${(source.relevance_score * 100).toFixed(0)}%</span>
                             `;
                             sourcesList.appendChild(sourceItem);
                         });
                         sourcesArea.style.display = 'block';
                     }
                 } else {
-                    responseArea.innerHTML = `
-                        <div class="alert alert-danger">
-                            <strong>Error:</strong> ${data.message || 'Unknown error occurred'}
-                        </div>
-                    `;
+                    responseArea.innerHTML = 'Error: ' + (data.message || 'Unknown error occurred');
+                    responseArea.className = 'response-area';
                 }
             } catch (error) {
-                responseArea.innerHTML = `
-                    <div class="alert alert-danger">
-                        <strong>Error:</strong> Unable to process request. Please try again.
-                    </div>
-                `;
+                responseArea.innerHTML = 'Error: Unable to process request. Please try again.';
+                responseArea.className = 'response-area';
                 console.error('Error:', error);
             } finally {
                 // Re-enable button
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Submit Query';
+                submitBtn.textContent = 'Submit Query';
             }
         }
 
@@ -265,4 +233,5 @@ Our system covers:
         window.addEventListener('load', loadStats);
     </script>
 </body>
-</html>'''
+</html>
+"""
