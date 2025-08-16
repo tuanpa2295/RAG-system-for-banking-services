@@ -66,7 +66,7 @@ class ChatSession(Base):
     def to_dict(self):
         """Convert session to dictionary format."""
         return {
-            "id": self.id,
+            "id": str(self.id),  # Convert UUID to string
             "user_id": self.user_id,
             "session_name": self.session_name,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -109,8 +109,8 @@ class ChatMessage(Base):
     def to_dict(self):
         """Convert message to dictionary format."""
         return {
-            "id": self.id,
-            "session_id": self.session_id,
+            "id": str(self.id),  # Convert UUID to string
+            "session_id": str(self.session_id),  # Convert UUID to string
             "message_type": self.message_type,
             "content": self.content,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
@@ -147,8 +147,8 @@ class SessionSummary(Base):
     def to_dict(self):
         """Convert summary to dictionary format."""
         return {
-            "id": self.id,
-            "session_id": self.session_id,
+            "id": str(self.id),  # Convert UUID to string
+            "session_id": str(self.session_id),  # Convert UUID to string
             "summary": self.summary,
             "topics": self.topics,
             "created_at": self.created_at.isoformat() if self.created_at else None,

@@ -65,17 +65,32 @@ def process_query():
                 "status": "error",
                 "message": "Missing 'query' field in request body"
             }), 400
-        
-        query = data['query'].strip()
+        query = data['query'].strip() if 'query' in data else ''
         session_id = data.get('session_id')
-        
-        if not query:
+        user_id = data.get('user_id', 'anonymous')
+        # Allow empty query if session_id is provided (for chat history reload)
+        if not query and not session_id:
             return jsonify({
                 "status": "error", 
                 "message": "Query cannot be empty"
             }), 400
         
-        # Create or get session if session_id provided
+        # Auto-create session if none provided and chat service is available
+        if chat_service and not session_id:
+            try:
+                session = chat_service.create_session(
+                    user_id=user_id,
+                    session_name=f"Banking Inquiry - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    metadata={"auto_created": True, "first_query": query[:100]}
+                )
+                session_id = session.id
+                print(f"✅ Auto-created chat session: {session_id}")
+            except Exception as e:
+                print(f"⚠️  Failed to create chat session: {str(e)}")
+                # Continue without chat history if creation fails
+                session_id = None
+        
+        # Get existing session if session_id provided
         if chat_service and session_id:
             session = chat_service.get_session(session_id)
             if not session:
@@ -85,7 +100,11 @@ def process_query():
                 }), 404
             
             # Add user message to session
-            chat_service.add_message(session_id, 'user', query)
+            try:
+                user_message = chat_service.add_message(session_id, 'user', query)
+                print(f"✅ Saved user message: {user_message.id}")
+            except Exception as e:
+                print(f"⚠️  Failed to save user message: {str(e)}")
         
         # Process the query
         result = rag_service.answer_question(query)
@@ -95,18 +114,31 @@ def process_query():
         
         # Add assistant response to session if using chat history
         if chat_service and session_id and result.get('status') == 'success':
-            chat_service.add_message(
-                session_id, 
-                'assistant', 
-                result['answer'],
-                sources=result.get('sources', []),
-                response_time_ms=response_time_ms
-            )
+            try:
+                assistant_message = chat_service.add_message(
+                    session_id, 
+                    'assistant', 
+                    result['answer'],
+                    sources=result.get('sources', []),
+                    response_time_ms=response_time_ms
+                )
+                print(f"✅ Saved assistant message: {assistant_message.id}")
+            except Exception as e:
+                print(f"⚠️  Failed to save assistant message: {str(e)}")
         
-        # Add response time and timestamp
+        # Add response time, timestamp, and session info to result
         result['response_time_ms'] = response_time_ms
         result['timestamp'] = datetime.now().isoformat()
-        
+        # Include session information in response
+        if session_id:
+            result['session_id'] = session_id
+            result['chat_enabled'] = True
+            # Load all messages for this session
+            if chat_service:
+                messages = chat_service.get_session_messages(session_id)
+                result['messages'] = [msg.to_dict() for msg in messages]
+        else:
+            result['chat_enabled'] = False
         return jsonify(result)
         
     except Exception as e:

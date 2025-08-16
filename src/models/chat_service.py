@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import json
 import logging
 import os
+import uuid
 
 from .banking_models import Base, ChatSession, ChatMessage, SessionSummary
 
@@ -25,15 +26,14 @@ class ChatService:
         Initialize the chat service.
         
         Args:
-            database_url: SQLAlchemy database URL. If None, uses SQLite default.
+            database_url: SQLAlchemy database URL. If None, uses env var.
         """
-        if database_url is None:
-            # Default to SQLite database in the project directory
-            database_url = f"sqlite:////{os.path.abspath('data/chat_history.db')}"
-        
+        # Always use DATABASE_URL from environment
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            raise RuntimeError("DATABASE_URL environment variable must be set for PostgreSQL connection.")
         self.engine = create_engine(database_url, echo=False)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-        
         # Create tables if they don't exist
         self.create_tables()
     
@@ -49,6 +49,15 @@ class ChatService:
     def get_db_session(self) -> Session:
         """Get a database session."""
         return self.SessionLocal()
+    
+    def _convert_to_uuid(self, uuid_string: str):
+        """Convert string UUID to UUID object if using PostgreSQL."""
+        try:
+            if isinstance(uuid_string, str):
+                return uuid.UUID(uuid_string)
+            return uuid_string
+        except (ValueError, TypeError):
+            return uuid_string
     
     # Session Management Methods
     
@@ -96,7 +105,9 @@ class ChatService:
         """
         db = self.get_db_session()
         try:
-            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            # Convert string UUID to UUID object if needed
+            uuid_id = self._convert_to_uuid(session_id)
+            session = db.query(ChatSession).filter(ChatSession.id == uuid_id).first()
             return session
         except SQLAlchemyError as e:
             logger.error(f"Failed to get chat session {session_id}: {str(e)}")
@@ -148,7 +159,8 @@ class ChatService:
         """
         db = self.get_db_session()
         try:
-            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            uuid_id = self._convert_to_uuid(session_id)
+            session = db.query(ChatSession).filter(ChatSession.id == uuid_id).first()
             if not session:
                 return False
             
@@ -192,13 +204,14 @@ class ChatService:
         db = self.get_db_session()
         try:
             # Verify session exists
-            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            uuid_id = self._convert_to_uuid(session_id)
+            session = db.query(ChatSession).filter(ChatSession.id == uuid_id).first()
             if not session:
                 logger.error(f"Session {session_id} not found")
                 return None
             
             message = ChatMessage(
-                session_id=session_id,
+                session_id=uuid_id,
                 message_type=message_type,
                 content=content,
                 sources=sources,
@@ -235,8 +248,9 @@ class ChatService:
         """
         db = self.get_db_session()
         try:
+            uuid_id = self._convert_to_uuid(session_id)
             messages = (db.query(ChatMessage)
-                       .filter(ChatMessage.session_id == session_id)
+                       .filter(ChatMessage.session_id == uuid_id)
                        .order_by(ChatMessage.timestamp)
                        .limit(limit)
                        .all())
@@ -293,11 +307,12 @@ class ChatService:
         """
         db = self.get_db_session()
         try:
-            session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            uuid_id = self._convert_to_uuid(session_id)
+            session = db.query(ChatSession).filter(ChatSession.id == uuid_id).first()
             if not session:
                 return {}
             
-            messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).all()
+            messages = db.query(ChatMessage).filter(ChatMessage.session_id == uuid_id).all()
             
             user_messages = [m for m in messages if m.message_type == 'user']
             assistant_messages = [m for m in messages if m.message_type == 'assistant']
