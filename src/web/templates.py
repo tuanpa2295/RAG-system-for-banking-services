@@ -106,6 +106,55 @@ HTML_TEMPLATE = '''
                 opacity: 1;
             }
         }
+        .mic-recording {
+            background-color: #dc3545 !important;
+            color: white !important;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        .speech-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .ai-message-container {
+            position: relative;
+        }
+        .speaker-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            border: none;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        .speaker-btn:hover {
+            opacity: 1;
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .speaker-btn.speaking {
+            background: #198754;
+            color: white;
+            opacity: 1;
+            animation: pulse 1s infinite;
+        }
+        .speaker-btn.paused {
+            background: #ffc107;
+            color: #000;
+        }
     </style>
 </head>
 <body>
@@ -162,9 +211,12 @@ Our system covers:
                             <form onsubmit="event.preventDefault(); submitQuery();">
                                 <div class="input-group">
                                     <textarea id="queryInput" class="form-control" 
-                                            placeholder="Type your banking question here..." 
+                                            placeholder="Type your banking question here or use the microphone..." 
                                             rows="2"
                                             style="resize: none;"></textarea>
+                                    <button id="micBtn" type="button" class="btn btn-outline-secondary" onclick="toggleSpeechRecognition()">
+                                        <i class="bi bi-mic"></i>
+                                    </button>
                                     <button id="submitBtn" type="submit" class="btn btn-primary px-4">
                                         <i class="bi bi-send"></i>
                                     </button>
@@ -234,24 +286,7 @@ Our system covers:
             const sourcesList = document.getElementById('sourcesList');
 
             if (!query) {
-                const toastEl = document.createElement('div');
-                toastEl.innerHTML = `
-                    <div class="toast-container position-fixed bottom-0 end-0 p-3">
-                        <div class="toast" role="alert">
-                            <div class="toast-header bg-warning text-dark">
-                                <strong class="me-auto">Warning</strong>
-                                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-                            </div>
-                            <div class="toast-body">
-                                Please enter a question
-                            </div>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(toastEl);
-                const toast = new bootstrap.Toast(toastEl.querySelector('.toast'));
-                toast.show();
-                setTimeout(() => toastEl.remove(), 5000);
+                showToast('Please enter a question', 'warning');
                 return;
             }
 
@@ -304,8 +339,13 @@ Our system covers:
 
                     // Add AI response to chat
                     const aiMessage = document.createElement('div');
-                    aiMessage.className = 'message ai';
-                    aiMessage.innerHTML = `<div class="message-content">${data.answer}</div>`;
+                    aiMessage.className = 'message ai ai-message-container';
+                    aiMessage.innerHTML = `
+                        <div class="message-content" id="msg-${Date.now()}">${data.answer}</div>
+                        <button class="speaker-btn" onclick="toggleSpeechReading(this)" title="Read response aloud">
+                            <i class="bi bi-volume-up"></i>
+                        </button>
+                    `;
                     chatbox.appendChild(aiMessage);
 
                     // Show sources
@@ -389,6 +429,224 @@ Our system covers:
 
         // Load stats when page loads
         window.addEventListener('load', loadStats);
+
+        // Speech Recognition Variables
+        let recognition = null;
+        let isRecording = false;
+        let speechSynthesis = window.speechSynthesis;
+        let currentUtterance = null;
+        let currentSpeakerButton = null;
+        let isPaused = false;
+
+        // Initialize Speech Recognition
+        function initSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+                
+                recognition.onstart = function() {
+                    console.log('Speech recognition started');
+                    const micBtn = document.getElementById('micBtn');
+                    micBtn.classList.add('mic-recording');
+                    micBtn.innerHTML = '<i class="bi bi-mic-fill"></i>';
+                };
+                
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    document.getElementById('queryInput').value = transcript;
+                    console.log('Speech recognized:', transcript);
+                };
+                
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error:', event.error);
+                    stopRecording();
+                    showToast('Speech recognition error: ' + event.error, 'error');
+                };
+                
+                recognition.onend = function() {
+                    console.log('Speech recognition ended');
+                    stopRecording();
+                };
+                
+                return true;
+            } else {
+                console.warn('Speech recognition not supported');
+                showToast('Speech recognition not supported in this browser', 'warning');
+                return false;
+            }
+        }
+
+        // Toggle Speech Recognition
+        function toggleSpeechRecognition() {
+            if (!recognition && !initSpeechRecognition()) {
+                return;
+            }
+            
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                recognition.start();
+                isRecording = true;
+            }
+        }
+
+        // Stop Recording
+        function stopRecording() {
+            isRecording = false;
+            const micBtn = document.getElementById('micBtn');
+            micBtn.classList.remove('mic-recording');
+            micBtn.innerHTML = '<i class="bi bi-mic"></i>';
+        }
+
+        // Integrated Text-to-Speech Function with Pause/Resume
+        function toggleSpeechReading(button) {
+            const messageContainer = button.closest('.ai-message-container');
+            const messageContent = messageContainer.querySelector('.message-content');
+            const textContent = messageContent.textContent;
+            
+            // If currently speaking from this button
+            if (currentSpeakerButton === button && speechSynthesis.speaking) {
+                if (isPaused) {
+                    // Resume
+                    speechSynthesis.resume();
+                    isPaused = false;
+                    button.classList.remove('paused');
+                    button.classList.add('speaking');
+                    button.innerHTML = '<i class="bi bi-volume-up-fill"></i>';
+                    button.title = 'Pause reading';
+                } else {
+                    // Pause
+                    speechSynthesis.pause();
+                    isPaused = true;
+                    button.classList.remove('speaking');
+                    button.classList.add('paused');
+                    button.innerHTML = '<i class="bi bi-play-fill"></i>';
+                    button.title = 'Resume reading';
+                }
+                return;
+            }
+            
+            // Stop any currently playing speech
+            if (speechSynthesis.speaking) {
+                speechSynthesis.cancel();
+                resetAllSpeechControls();
+            }
+            
+            // Start new speech
+            const utterance = new SpeechSynthesisUtterance(textContent);
+            utterance.rate = 0.8;
+            utterance.pitch = 1;
+            utterance.volume = 1;
+            
+            // Set voice to English if available
+            const voices = speechSynthesis.getVoices();
+            const englishVoice = voices.find(voice => voice.lang.startsWith('en'));
+            if (englishVoice) {
+                utterance.voice = englishVoice;
+            }
+            
+            // Store current elements and reset state
+            currentUtterance = utterance;
+            currentSpeakerButton = button;
+            isPaused = false;
+            
+            utterance.onstart = function() {
+                button.classList.add('speaking');
+                button.innerHTML = '<i class="bi bi-volume-up-fill"></i>';
+                button.title = 'Pause reading';
+            };
+            
+            utterance.onend = function() {
+                resetSpeechControls(button);
+            };
+            
+            utterance.onerror = function(event) {
+                console.error('Speech synthesis error:', event.error);
+                resetSpeechControls(button);
+                showToast('Text-to-speech error: ' + event.error, 'error');
+            };
+            
+            speechSynthesis.speak(utterance);
+        }
+
+        // Reset Speech Controls
+        function resetSpeechControls(speakerButton) {
+            speakerButton.classList.remove('speaking', 'paused');
+            speakerButton.innerHTML = '<i class="bi bi-volume-up"></i>';
+            speakerButton.title = 'Read response aloud';
+            
+            currentUtterance = null;
+            currentSpeakerButton = null;
+            isPaused = false;
+        }
+
+        // Reset All Speech Controls
+        function resetAllSpeechControls() {
+            document.querySelectorAll('.speaker-btn').forEach(btn => {
+                btn.classList.remove('speaking', 'paused');
+                btn.innerHTML = '<i class="bi bi-volume-up"></i>';
+                btn.title = 'Read response aloud';
+            });
+            
+            currentUtterance = null;
+            currentSpeakerButton = null;
+            isPaused = false;
+        }
+
+        // Show Toast Notification
+        function showToast(message, type = 'info') {
+            const toastEl = document.createElement('div');
+            const bgClass = type === 'error' ? 'bg-danger' : type === 'warning' ? 'bg-warning text-dark' : 'bg-info';
+            toastEl.innerHTML = `
+                <div class="toast-container position-fixed bottom-0 end-0 p-3">
+                    <div class="toast" role="alert">
+                        <div class="toast-header ${bgClass} text-white">
+                            <strong class="me-auto">${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
+                            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+                        </div>
+                        <div class="toast-body">
+                            ${message}
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(toastEl);
+            const toast = new bootstrap.Toast(toastEl.querySelector('.toast'));
+            toast.show();
+            setTimeout(() => toastEl.remove(), 5000);
+        }
+
+        // Initialize speech recognition on page load
+        window.addEventListener('load', function() {
+            initSpeechRecognition();
+            
+            // Load voices for speech synthesis
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = function() {
+                    console.log('Voices loaded:', speechSynthesis.getVoices().length);
+                };
+            }
+        });
+
+        // Handle page unload to stop speech
+        window.addEventListener('beforeunload', function() {
+            if (speechSynthesis.speaking) {
+                speechSynthesis.cancel();
+            }
+        });
+
+        // Handle visibility change to pause/resume speech
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && speechSynthesis.speaking && !isPaused) {
+                // Auto-pause when tab becomes hidden
+                if (currentSpeakerButton) {
+                    toggleSpeechReading(currentSpeakerButton);
+                }
+            }
+        });
     </script>
 </body>
 </html>'''
