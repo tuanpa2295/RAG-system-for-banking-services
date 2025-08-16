@@ -159,10 +159,171 @@ HTML_TEMPLATE = '''
             color: #000;
             opacity: 1;
         }
+        
+        /* Sidebar Menu Styles */
+        .settings-sidebar {
+            position: fixed;
+            top: 0;
+            left: -300px;
+            width: 300px;
+            height: 100vh;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            transition: left 0.3s ease;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+        .settings-sidebar.open {
+            left: 0;
+        }
+        .sidebar-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .sidebar-content {
+            padding: 20px;
+        }
+        .sidebar-section {
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .sidebar-section:last-child {
+            border-bottom: none;
+        }
+        .sidebar-section h4 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        .voice-setting-group {
+            margin-bottom: 15px;
+        }
+        .voice-setting-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-size: 14px;
+        }
+        .voice-setting-group select,
+        .voice-setting-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .close-sidebar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            opacity: 0.8;
+        }
+        .close-sidebar:hover {
+            opacity: 1;
+        }
+        .settings-toggle {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transition: background 0.3s;
+            z-index: 999;
+        }
+        .settings-toggle:hover {
+            background: #5a6fd8;
+        }
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+            display: none;
+        }
+        .sidebar-overlay.visible {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="container py-4">
+        <!-- Settings Toggle Button -->
+        <button class="settings-toggle" onclick="toggleSettingsSidebar()" title="Voice Settings">
+            <i class="bi bi-gear"></i>
+        </button>
+
+        <!-- Settings Sidebar -->
+        <div class="sidebar-overlay" onclick="closeSettingsSidebar()"></div>
+        <div class="settings-sidebar" id="settingsSidebar">
+            <div class="sidebar-header">
+                <i class="bi bi-gear"></i> Voice Settings
+                <button class="close-sidebar" onclick="closeSettingsSidebar()">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+            <div class="sidebar-content">
+                <div class="sidebar-section">
+                    <h4><i class="bi bi-person-voice"></i> Text-to-Speech Settings</h4>
+                    <div class="voice-setting-group">
+                        <label for="globalVoiceSelect">Voice:</label>
+                        <select id="globalVoiceSelect" onchange="updateGlobalVoice()">
+                            <option value="">Default Voice</option>
+                        </select>
+                    </div>
+                    <div class="voice-setting-group">
+                        <label for="speechRate">Speed:</label>
+                        <input type="range" id="speechRate" min="0.5" max="2" step="0.1" value="0.8" onchange="updateSpeechRate()">
+                        <small class="text-muted">Current: <span id="rateValue">0.8</span>x</small>
+                    </div>
+                    <div class="voice-setting-group">
+                        <label for="speechPitch">Pitch:</label>
+                        <input type="range" id="speechPitch" min="0.5" max="2" step="0.1" value="1" onchange="updateSpeechPitch()">
+                        <small class="text-muted">Current: <span id="pitchValue">1.0</span></small>
+                    </div>
+                    <div class="voice-setting-group">
+                        <label for="speechVolume">Volume:</label>
+                        <input type="range" id="speechVolume" min="0" max="1" step="0.1" value="1" onchange="updateSpeechVolume()">
+                        <small class="text-muted">Current: <span id="volumeValue">100</span>%</small>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <h4><i class="bi bi-mic"></i> Speech Recognition Settings</h4>
+                    <div class="voice-setting-group">
+                        <label for="speechLang">Language:</label>
+                        <select id="speechLang" onchange="updateSpeechLanguage()">
+                            <option value="en-US">English (US)</option>
+                            <option value="en-GB">English (UK)</option>
+                            <option value="en-AU">English (Australia)</option>
+                            <option value="es-ES">Spanish</option>
+                            <option value="fr-FR">French</option>
+                            <option value="de-DE">German</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="header">
             <h1>🏦 Banking RAG System</h1>
             <p class="lead">AI-Powered Banking & Financial Services Q&A</p>
@@ -441,6 +602,14 @@ Our system covers:
         let currentUtterance = null;
         let currentSpeakerButton = null;
         let isPaused = false;
+        let availableVoices = [];
+        
+        // Global speech settings
+        let globalVoice = null;
+        let speechRate = 0.8;
+        let speechPitch = 1.0;
+        let speechVolume = 1.0;
+        let speechLanguage = 'en-US';
 
         // Initialize Speech Recognition
         function initSpeechRecognition() {
@@ -449,7 +618,7 @@ Our system covers:
                 recognition = new SpeechRecognition();
                 recognition.continuous = false;
                 recognition.interimResults = false;
-                recognition.lang = 'en-US';
+                recognition.lang = speechLanguage;
                 
                 recognition.onstart = function() {
                     console.log('Speech recognition started');
@@ -467,7 +636,7 @@ Our system covers:
                 recognition.onerror = function(event) {
                     console.error('Speech recognition error:', event.error);
                     stopRecording();
-                    showToast('Speech recognition error: ' + event.error, 'error');
+                    // Removed toast notification for speech recognition errors
                 };
                 
                 recognition.onend = function() {
@@ -533,23 +702,47 @@ Our system covers:
                 return;
             }
             
-            // Stop any currently playing speech
-            if (speechSynthesis.speaking) {
-                speechSynthesis.cancel();
-                resetAllSpeechControls();
+            // If this is the same button but speech has ended (handle edge case)
+            if (currentSpeakerButton === button && !speechSynthesis.speaking) {
+                // Reset the state and start fresh
+                resetSpeechControls(button);
             }
             
-            // Start new speech
-            const utterance = new SpeechSynthesisUtterance(textContent);
-            utterance.rate = 0.8;
-            utterance.pitch = 1;
-            utterance.volume = 1;
+            // Stop any currently playing speech and reset all states
+            if (speechSynthesis.speaking || isPaused) {
+                speechSynthesis.cancel();
+                resetAllSpeechControls();
+                
+                // Small delay to ensure speech is fully stopped
+                setTimeout(() => {
+                    startNewSpeech(button, textContent);
+                }, 100);
+            } else {
+                startNewSpeech(button, textContent);
+            }
+        }
+
+        // Start New Speech Function
+        function startNewSpeech(button, textContent) {
+            // Ensure clean state
+            currentUtterance = null;
+            currentSpeakerButton = null;
+            isPaused = false;
             
-            // Set voice to English if available
-            const voices = speechSynthesis.getVoices();
-            const englishVoice = voices.find(voice => voice.lang.startsWith('en'));
-            if (englishVoice) {
-                utterance.voice = englishVoice;
+            // Create new speech
+            const utterance = new SpeechSynthesisUtterance(textContent);
+            utterance.rate = speechRate;
+            utterance.pitch = speechPitch;
+            utterance.volume = speechVolume;
+            
+            // Set global voice or default to English
+            if (globalVoice) {
+                utterance.voice = globalVoice;
+            } else {
+                const englishVoice = availableVoices.find(voice => voice.lang.startsWith('en'));
+                if (englishVoice) {
+                    utterance.voice = englishVoice;
+                }
             }
             
             // Store current elements and reset state
@@ -570,17 +763,132 @@ Our system covers:
             utterance.onerror = function(event) {
                 console.error('Speech synthesis error:', event.error);
                 resetSpeechControls(button);
-                showToast('Text-to-speech error: ' + event.error, 'error');
+                // Removed toast notification for speech errors
             };
             
             speechSynthesis.speak(utterance);
         }
 
+        // Settings Sidebar Functions
+        function toggleSettingsSidebar() {
+            const sidebar = document.getElementById('settingsSidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('visible');
+        }
+
+        function closeSettingsSidebar() {
+            const sidebar = document.getElementById('settingsSidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            
+            sidebar.classList.remove('open');
+            overlay.classList.remove('visible');
+        }
+
+        // Voice Settings Functions
+        function updateGlobalVoice() {
+            const select = document.getElementById('globalVoiceSelect');
+            const selectedIndex = select.value;
+            
+            if (selectedIndex && availableVoices[selectedIndex]) {
+                globalVoice = availableVoices[selectedIndex];
+            } else {
+                globalVoice = null;
+            }
+            
+            // Apply immediately if speech is currently playing
+            applyVoiceSettingsImmediately();
+        }
+
+        function updateSpeechRate() {
+            const slider = document.getElementById('speechRate');
+            speechRate = parseFloat(slider.value);
+            document.getElementById('rateValue').textContent = speechRate;
+            
+            // Apply immediately if speech is currently playing
+            applyVoiceSettingsImmediately();
+        }
+
+        function updateSpeechPitch() {
+            const slider = document.getElementById('speechPitch');
+            speechPitch = parseFloat(slider.value);
+            document.getElementById('pitchValue').textContent = speechPitch;
+            
+            // Apply immediately if speech is currently playing
+            applyVoiceSettingsImmediately();
+        }
+
+        function updateSpeechVolume() {
+            const slider = document.getElementById('speechVolume');
+            speechVolume = parseFloat(slider.value);
+            document.getElementById('volumeValue').textContent = Math.round(speechVolume * 100);
+            
+            // Apply immediately if speech is currently playing
+            applyVoiceSettingsImmediately();
+        }
+
+        function updateSpeechLanguage() {
+            const select = document.getElementById('speechLang');
+            speechLanguage = select.value;
+            
+            // Update speech recognition language
+            if (recognition) {
+                recognition.lang = speechLanguage;
+            }
+        }
+
+        // Apply Voice Settings Immediately
+        function applyVoiceSettingsImmediately() {
+            if (currentUtterance && speechSynthesis.speaking) {
+                // Store current position and text
+                const currentButton = currentSpeakerButton;
+                const messageContainer = currentButton.closest('.ai-message-container');
+                const messageContent = messageContainer.querySelector('.message-content');
+                const textContent = messageContent.textContent;
+                const wasPlaying = !isPaused;
+                
+                // Cancel current speech
+                speechSynthesis.cancel();
+                
+                // Wait a moment for cancel to complete, then restart with new settings
+                setTimeout(() => {
+                    if (currentButton && wasPlaying) {
+                        // Reset states
+                        resetAllSpeechControls();
+                        
+                        // Start fresh with new settings
+                        startNewSpeech(currentButton, textContent);
+                    }
+                }, 150);
+            }
+        }
+
+        // Load Available Voices
+        function loadVoices() {
+            availableVoices = speechSynthesis.getVoices();
+            
+            // Populate global voice selector
+            const globalSelect = document.getElementById('globalVoiceSelect');
+            if (globalSelect) {
+                globalSelect.innerHTML = '<option value="">Default Voice</option>';
+                
+                availableVoices.forEach((voice, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    globalSelect.appendChild(option);
+                });
+            }
+        }
+
         // Reset Speech Controls
         function resetSpeechControls(speakerButton) {
-            speakerButton.classList.remove('speaking', 'paused');
-            speakerButton.innerHTML = '<i class="bi bi-volume-up"></i>';
-            speakerButton.title = 'Read response aloud';
+            if (speakerButton) {
+                speakerButton.classList.remove('speaking', 'paused');
+                speakerButton.innerHTML = '<i class="bi bi-volume-up"></i>';
+                speakerButton.title = 'Read response aloud';
+            }
             
             currentUtterance = null;
             currentSpeakerButton = null;
@@ -628,10 +936,9 @@ Our system covers:
             initSpeechRecognition();
             
             // Load voices for speech synthesis
+            loadVoices();
             if (speechSynthesis.onvoiceschanged !== undefined) {
-                speechSynthesis.onvoiceschanged = function() {
-                    console.log('Voices loaded:', speechSynthesis.getVoices().length);
-                };
+                speechSynthesis.onvoiceschanged = loadVoices;
             }
         });
 
