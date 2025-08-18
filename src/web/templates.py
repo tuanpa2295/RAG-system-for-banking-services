@@ -106,6 +106,20 @@ HTML_TEMPLATE = '''
                 opacity: 1;
             }
         }
+        .session-controls {
+            border-top: 1px solid #dee2e6;
+            padding-top: 0.5rem;
+        }
+        .message-meta {
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #f8f9fa;
+            font-size: 0.85em;
+        }
+        .message-meta small {
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
         .mic-recording {
             background-color: #dc3545 !important;
             color: white !important;
@@ -207,6 +221,19 @@ Our system covers:
                             <div id="sourcesList"></div>
                         </div>
 
+                        <!-- Session Management Controls -->
+                        <div class="session-controls mx-3 mb-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    <i class="bi bi-chat-dots"></i> 
+                                    <span id="sessionStatus">Ready to chat</span>
+                                </small>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="startNewSession()" title="Start New Session">
+                                    <i class="bi bi-plus-circle"></i> New Session
+                                </button>
+                            </div>
+                        </div>
+
                         <div class="chat-input-container">
                             <form onsubmit="event.preventDefault(); submitQuery();">
                                 <div class="input-group">
@@ -274,8 +301,46 @@ Our system covers:
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Global session management
+        let currentSessionId = localStorage.getItem('banking_rag_session_id');
+        let sessionStartTime = new Date();
+
         function setQuery(query) {
             document.getElementById('queryInput').value = query;
+        }
+
+        function generateUserId() {
+            // Generate a simple user ID for session tracking
+            let userId = localStorage.getItem('banking_rag_user_id');
+            if (!userId) {
+                userId = 'user_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('banking_rag_user_id', userId);
+            }
+            return userId;
+        }
+
+        function startNewSession() {
+            // Clear current session
+            currentSessionId = null;
+            localStorage.removeItem('banking_rag_session_id');
+            
+            // Clear chat history
+            const chatbox = document.getElementById('chatbox');
+            chatbox.innerHTML = '';
+            
+            // Show welcome message
+            const welcomeMessage = document.createElement('div');
+            welcomeMessage.className = 'message ai';
+            welcomeMessage.innerHTML = `
+                <div class="message-content">
+                    <strong>Welcome to Banking RAG Assistant!</strong><br>
+                    I'm here to help you with banking questions. Ask me about loans, accounts, credit cards, and more.
+                    <br><br>
+                    <small class="text-muted">New session started at ${new Date().toLocaleTimeString()}</small>
+                </div>
+            `;
+            chatbox.appendChild(welcomeMessage);
+            sessionStartTime = new Date();
         }
 
         async function submitQuery() {
@@ -323,21 +388,39 @@ Our system covers:
             sourcesArea.style.display = 'none';
 
             try {
+                // Prepare request payload with session management
+                const requestPayload = { 
+                    query: query,
+                    user_id: generateUserId()
+                };
+                
+                // Include session_id if we have one
+                if (currentSessionId) {
+                    requestPayload.session_id = currentSessionId;
+                }
+
                 const response = await fetch('/api/v1/query', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ query: query })
+                    body: JSON.stringify(requestPayload)
                 });
 
                 const data = await response.json();
 
                 if (data.status === 'success') {
+                    // Store session ID if returned and not already stored
+                    if (data.session_id && !currentSessionId) {
+                        currentSessionId = data.session_id;
+                        localStorage.setItem('banking_rag_session_id', currentSessionId);
+                        console.log('New session created:', currentSessionId);
+                    }
+
                     // Remove typing indicator
                     chatbox.removeChild(typingIndicator);
 
-                    // Add AI response to chat
+                    // Add AI response to chat with enhanced information
                     const aiMessage = document.createElement('div');
                     aiMessage.className = 'message ai ai-message-container';
                     aiMessage.innerHTML = `
@@ -414,6 +497,19 @@ Our system covers:
             }
         });
 
+        function updateSessionStatus() {
+            const statusElement = document.getElementById('sessionStatus');
+            if (currentSessionId) {
+                const duration = Math.floor((new Date() - sessionStartTime) / 60000);
+                statusElement.innerHTML = `Session active (${duration}m) • ID: ${currentSessionId.substr(0, 8)}...`;
+            } else {
+                statusElement.innerHTML = 'Ready to chat';
+            }
+        }
+
+        // Update session status every 30 seconds
+        setInterval(updateSessionStatus, 30000);
+
         // Load document count on page load
         async function loadStats() {
             try {
@@ -427,8 +523,48 @@ Our system covers:
             }
         }
 
+        // Initialize page
+        function initializePage() {
+            loadStats();
+            updateSessionStatus();
+            // Show existing session info if available
+            if (currentSessionId) {
+                console.log('Resuming session:', currentSessionId);
+                updateSessionStatus();
+                loadSessionMessages(currentSessionId);
+            }
+        }
+
+        // Load and render messages for a session
+        async function loadSessionMessages(sessionId) {
+            const chatbox = document.getElementById('chatbox');
+            chatbox.innerHTML = '';
+            try {
+                const response = await fetch('/api/v1/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: '', session_id: sessionId, user_id: generateUserId() })
+                });
+                const data = await response.json();
+                if (data.messages && Array.isArray(data.messages)) {
+                    data.messages.forEach(msg => {
+                        const msgDiv = document.createElement('div');
+                        msgDiv.className = 'message ' + (msg.message_type === 'user' ? 'user' : 'ai');
+                        let content = `<div class="message-content">${msg.content}</div>`;
+                        if (msg.timestamp) {
+                            content += `<div class="message-meta"><small class="text-muted">${msg.timestamp}</small></div>`;
+                        }
+                        msgDiv.innerHTML = content;
+                        chatbox.appendChild(msgDiv);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load session messages:', error);
+            }
+        }
+
         // Load stats when page loads
-        window.addEventListener('load', loadStats);
+        window.addEventListener('load', initializePage);
 
         // Speech Recognition Variables
         let recognition = null;
